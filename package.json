@@ -1,0 +1,26 @@
+{
+  "name": "mia_school_fishtank",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server/index.js",
+    "share": "node scripts/share.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.2.1",
+    "multer": "^2.1.1",
+    "pixi.js": "^8.19.0",
+    "qrcode": "^1.5.4",
+    "sharp": "^0.35.0",
+    "ws": "^8.21.0"
+  },
+  "type": "commonjs"
+}

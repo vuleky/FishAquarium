@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<title>水族箱投影</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #021a33; overflow: hidden; height: 100%; font-family: system-serif, -apple-system, sans-serif; }
+  body.hide-cursor { cursor: none; }
+  
+  #banner {
+    position: fixed; left: 0; right: 0; top: 12%;
+    text-align: center; pointer-events: none; z-index: 10;
+    font-family: "PingFang TC", "Microsoft JhengHei", sans-serif;
+    opacity: 0; transition: opacity .6s;
+  }
+  #banner.show { opacity: 1; }
+  #banner .inner {
+    display: inline-block; padding: 18px 48px; border-radius: 60px;
+    background: rgba(8, 40, 80, .55); backdrop-filter: blur(4px);
+    color: #fff; font-size: 56px; font-weight: 700;
+    text-shadow: 0 2px 16px rgba(0,180,255,.8);
+    border: 2px solid rgba(140, 220, 255, .5);
+  }
+  #paused {
+    position: fixed; inset: 0; background: rgba(2, 10, 24, .85); z-index: 20;
+    display: none; align-items: center; justify-content: center;
+    color: #9cd; font-size: 40px;
+  }
+
+  /* 投影頁 QR Code 互動 UI */
+  #qr-container {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    z-index: 30;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    user-select: none;
+  }
+
+  #qr-btn {
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    background: rgba(8, 25, 48, 0.7);
+    border: 1px solid rgba(0, 180, 255, 0.4);
+    box-shadow: 0 4px 15px rgba(0, 180, 255, 0.2), inset 0 0 10px rgba(0, 180, 255, 0.1);
+    color: #fff;
+    font-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  #qr-btn:hover {
+    transform: scale(1.1);
+    border-color: rgba(0, 180, 255, 0.8);
+    box-shadow: 0 4px 20px rgba(0, 180, 255, 0.5), inset 0 0 12px rgba(0, 180, 255, 0.2);
+  }
+
+  #qr-drawer {
+    position: absolute;
+    bottom: 70px;
+    right: 0;
+    width: 280px;
+    background: rgba(8, 24, 46, 0.85);
+    border: 1px solid rgba(140, 220, 255, 0.3);
+    border-radius: 20px;
+    padding: 24px 20px;
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    color: #e2f0fd;
+  }
+
+  #qr-drawer.open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+  }
+
+  #qr-drawer h3 {
+    font-size: 1.05rem;
+    margin: 0 0 12px 0;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.5px;
+  }
+
+  #qr-drawer p {
+    font-size: 0.8rem;
+    color: #8bb1d6;
+    margin: 0 0 16px 0;
+    line-height: 1.4;
+  }
+
+  .qr-frame {
+    background: #fff;
+    padding: 10px;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    margin-bottom: 16px;
+    width: 170px;
+    height: 170px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #qr-display-img {
+    width: 150px;
+    height: 150px;
+  }
+
+  .qr-url-link {
+    font-size: 0.75rem;
+    color: #00b4ff;
+    word-break: break-all;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body class="hide-cursor">
+<div id="banner"><span class="inner"></span></div>
+<div id="paused">⏸ 暫停中</div>
+
+<!-- 掃碼畫魚浮動面板 -->
+<div id="qr-container">
+  <div id="qr-drawer">
+    <h3>🎨 手機掃碼，加入畫魚！</h3>
+    <p>掃描下方 QR 碼，開啟手機畫板</p>
+    <div class="qr-frame">
+      <img id="qr-display-img" src="" alt="上傳網址 QR Code">
+    </div>
+    <div id="qr-display-url" class="qr-url-link">載入中...</div>
+  </div>
+  <div id="qr-btn" title="顯示/隱藏 QR Code">📱</div>
+</div>
+<script src="/vendor/pixi.min.js"></script>
+<script src="textures.js"></script>
+<script src="effects.js"></script>
+<script src="fish.js"></script>
+<script src="sound.js"></script>
+<script src="aquarium.js"></script>
+</body>
+</html>

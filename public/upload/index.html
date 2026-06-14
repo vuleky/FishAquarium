@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>上傳你的魚 🐟</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; font-family: "PingFang TC", "Microsoft JhengHei", sans-serif;
+    background: linear-gradient(180deg, #0a4f86, #031c3d); color: #fff;
+    min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+    padding: 20px 16px 40px;
+  }
+  h1 { font-size: 28px; margin: 8px 0 4px; }
+  .sub { color: #9cd; font-size: 15px; margin-bottom: 18px; }
+  .step { width: 100%; max-width: 480px; display: none; }
+  .step.active { display: block; }
+  .bigbtn {
+    display: block; width: 100%; padding: 20px; margin: 12px 0;
+    font-size: 22px; font-weight: 700; color: #fff; text-align: center;
+    background: linear-gradient(180deg, #1e90d6, #156aa8); border: none;
+    border-radius: 16px; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.35);
+  }
+  .bigbtn.secondary { background: rgba(255,255,255,.12); font-size: 17px; padding: 14px; }
+  .bigbtn:disabled { opacity: .5; }
+  .feedwrap { background: rgba(245,166,35,.12); border: 2px solid rgba(245,166,35,.4);
+    border-radius: 16px; padding: 12px; margin: 12px 0; }
+  .feedtitle { color: #ffce6b; font-weight: 700; font-size: 15px; text-align: center; margin-bottom: 10px; }
+  .feedrow { display: flex; gap: 10px; }
+  .feedbtn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 14px 4px; font-size: 30px; border: none; border-radius: 14px; cursor: pointer;
+    background: linear-gradient(180deg, #f5a623, #d07e10); color: #fff;
+    box-shadow: 0 4px 12px rgba(0,0,0,.3); transition: transform .08s; }
+  .feedbtn span { font-size: 14px; font-weight: 700; }
+  .feedbtn:active { transform: scale(.94); }
+  .feedbtn:disabled { opacity: .5; }
+  #cropWrap { position: relative; width: 100%; border-radius: 12px; overflow: hidden;
+    touch-action: none; background: #000; }
+  #cropCanvas { width: 100%; display: block; }
+  .hint { color: #bde; font-size: 14px; text-align: center; margin: 10px 0; }
+  input[type=text] {
+    width: 100%; padding: 16px; font-size: 20px; border-radius: 12px;
+    border: none; margin: 10px 0; text-align: center;
+  }
+  .tips { margin-top: 26px; background: rgba(255,255,255,.08); border-radius: 14px;
+    padding: 14px 18px; font-size: 15px; line-height: 1.8; max-width: 480px; width: 100%; }
+  .tips b { color: #ffd34d; }
+  #done { text-align: center; }
+  #done .fish { font-size: 90px; animation: swim 2.2s ease-in-out infinite; display: inline-block; }
+  @keyframes swim { 0%,100% { transform: translateX(-18px) rotate(-4deg);} 50% { transform: translateX(18px) rotate(4deg);} }
+  #err { color: #ff9c9c; text-align: center; min-height: 22px; font-size: 15px; }
+  #prevBox { border-radius: 12px; padding: 14px; text-align: center;
+    background: repeating-conic-gradient(#cfd6dd 0% 25%, #f2f5f8 0% 50%) 0 0/22px 22px; }
+  #prevBox img { max-width: 100%; max-height: 38vh; }
+  .strengths { display: flex; gap: 10px; justify-content: center; margin: 6px 0 4px; }
+  .chip { flex: 1; padding: 12px; font-size: 18px; border-radius: 12px; border: 2px solid rgba(255,255,255,.3);
+    background: rgba(255,255,255,.1); color: #fff; cursor: pointer; }
+  .chip.on { background: #1e90d6; border-color: #8fd0ff; font-weight: 700; }
+  .chip:disabled { opacity: .4; }
+  .headbox { background: rgba(255,211,77,.12); border: 2px solid rgba(255,211,77,.45);
+    border-radius: 14px; padding: 10px 12px; margin: 12px 0; }
+  .headtitle { color: #ffd34d; font-weight: 700; font-size: 16px; text-align: center; margin-bottom: 8px; }
+  .hchip.on { background: #d6a21e; border-color: #ffd34d; }
+  .spinner { border: 4px solid rgba(255,255,255,.2); border-top-color: #fff;
+    border-radius: 50%; width: 44px; height: 44px; margin: 18px auto;
+    animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<h1>🐟 上傳你的魚</h1>
+<div class="sub">畫好的魚，馬上游進大螢幕！</div>
+
+<!-- 步驟 1：選照片 -->
+<div class="step active" id="step1">
+  <button class="bigbtn" onclick="document.getElementById('file').click()">📷 拍照 / 選照片</button>
+  <div class="feedwrap">
+    <div class="feedtitle">🍤 餵魚！選一種飼料撒下去（看大螢幕）</div>
+    <div class="feedrow">
+      <button class="feedbtn feed" onclick="feed(this,'pellets')">🟠<span>顆粒</span></button>
+      <button class="feedbtn feed" onclick="feed(this,'flakes')">🍂<span>薄片</span></button>
+      <button class="feedbtn feed" onclick="feed(this,'treat')">✨<span>特別餌</span></button>
+    </div>
+  </div>
+  <div id="myfish"></div>
+  <input type="file" id="file" accept="image/*" hidden>
+  <div class="tips">
+    <b>拍照小技巧（去背更乾淨）：</b><br>
+    1️⃣ 把紙攤平、壓平角落<br>
+    2️⃣ 光線均勻，避免影子蓋到紙上<br>
+    3️⃣ 手機正對紙面垂直拍<br>
+    4️⃣ 讓紙佔滿畫面，等下還能再框選
+  </div>
+</div>
+
+<!-- 步驟 2：框選魚 -->
+<div class="step" id="step2">
+  <div class="hint">用手指框出「魚」的範圍（可重畫）</div>
+  <div id="cropWrap"><canvas id="cropCanvas"></canvas></div>
+  <input type="text" id="name" placeholder="🐟 幫魚取個名字（必填）" maxlength="12" required>
+  <button class="bigbtn" id="prevBtn" onclick="makePreview()">✨ 去背預覽</button>
+  <button class="bigbtn secondary" onclick="reset()">↩️ 重選照片</button>
+  <div id="err"></div>
+</div>
+
+<!-- 步驟 2.5：去背預覽確認 -->
+<div class="step" id="stepPrev">
+  <div class="hint">去背結果（格紋處 = 透明）</div>
+  <div id="prevBox"><img id="prevImg" alt="預覽"></div>
+  <div class="headbox">
+    <div class="headtitle">🐟 魚頭朝哪個方向？（一定要選對，魚才不會倒退游！）</div>
+    <div class="strengths">
+      <button class="chip hchip" data-h="-1" onclick="setHead(-1)">⬅️ 朝左</button>
+      <button class="chip hchip on" data-h="1" onclick="setHead(1)">➡️ 朝右</button>
+      <button class="chip" onclick="headVertical('up')">⬆️ 朝上</button>
+      <button class="chip" onclick="headVertical('down')">⬇️ 朝下</button>
+    </div>
+    <div class="hint" style="margin-top:4px">選「朝上/朝下」會自動把魚轉成橫的</div>
+  </div>
+  <div class="hint">效果不好？換個去背強度：</div>
+  <div class="strengths">
+    <button class="chip" data-s="low" onclick="reStrength('low')">弱</button>
+    <button class="chip on" data-s="medium" onclick="reStrength('medium')">中</button>
+    <button class="chip" data-s="high" onclick="reStrength('high')">強</button>
+  </div>
+  <div class="hint">歪斜微調：</div>
+  <div class="strengths">
+    <button class="chip" onclick="rotatePreview(-1)">⟲ 左轉 90°</button>
+    <button class="chip" onclick="rotatePreview(1)">⟳ 右轉 90°</button>
+  </div>
+  <button class="bigbtn" id="sendBtn" onclick="send()">🌊 很好，送出！</button>
+  <button class="bigbtn secondary" onclick="show('step2')">↩️ 重新框選</button>
+  <div id="err2"></div>
+</div>
+
+<!-- 上傳中 -->
+<div class="step" id="step3">
+  <div class="spinner"></div>
+  <div class="hint">魚正在跳進水裡⋯</div>
+</div>
+
+<!-- 完成 -->
+<div class="step" id="done">
+  <div class="fish">🐠</div>
+  <h1>游進去了！</h1>
+  <div class="sub">快看大螢幕，你的魚出現囉！</div>
+  <div class="feedwrap">
+    <div class="feedtitle">🍤 餵牠吃飼料！</div>
+    <div class="feedrow">
+      <button class="feedbtn feed" onclick="feed(this,'pellets')">🟠<span>顆粒</span></button>
+      <button class="feedbtn feed" onclick="feed(this,'flakes')">🍂<span>薄片</span></button>
+      <button class="feedbtn feed" onclick="feed(this,'treat')">✨<span>特別餌</span></button>
+    </div>
+  </div>
+  <button class="bigbtn" onclick="reset()">再上傳一隻 🐟</button>
+</div>
+
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+let img = null, sel = null, scale = 1;
+const canvas = $('cropCanvas'), ctx = canvas.getContext('2d');
+
+function show(id) {
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  $(id).classList.add('active');
+}
+
+$('file').addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const url = URL.createObjectURL(f);
+  const im = new Image();
+  im.onload = () => {
+    img = im;
+    // 限制 canvas 尺寸，省記憶體
+    const maxW = 1280;
+    scale = Math.min(1, maxW / im.width);
+    canvas.width = im.width * scale;
+    canvas.height = im.height * scale;
+    sel = null;
+    draw();
+    show('step2');
+    URL.revokeObjectURL(url);
+  };
+  im.src = url;
+  e.target.value = '';
+});
+
+function draw() {
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  if (sel) {
+    const { x, y, w, h } = norm(sel);
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.beginPath();
+    ctx.rect(0, 0, canvas.width, canvas.height);
+    ctx.rect(x, y, w, h);
+    ctx.fill('evenodd');
+    ctx.strokeStyle = '#ffd34d';
+    ctx.lineWidth = 4;
+    ctx.setLineDash([12, 8]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.restore();
+  }
+}
+
+function norm(s) {
+  return {
+    x: Math.min(s.x0, s.x1), y: Math.min(s.y0, s.y1),
+    w: Math.abs(s.x1 - s.x0), h: Math.abs(s.y1 - s.y0),
+  };
+}
+
+function pos(ev) {
+  const r = canvas.getBoundingClientRect();
+  const t = ev.touches ? ev.touches[0] : ev;
+  return {
+    x: (t.clientX - r.left) * canvas.width / r.width,
+    y: (t.clientY - r.top) * canvas.height / r.height,
+  };
+}
+
+let dragging = false;
+const wrap = $('cropWrap');
+for (const [start, move, end] of [['touchstart','touchmove','touchend'], ['mousedown','mousemove','mouseup']]) {
+  wrap.addEventListener(start, (e) => {
+    e.preventDefault();
+    const p = pos(e);
+    sel = { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+    dragging = true;
+    draw();
+  }, { passive: false });
+  wrap.addEventListener(move, (e) => {
+    if (!dragging) return;
+    e.preventDefault();
+    const p = pos(e);
+    sel.x1 = Math.max(0, Math.min(canvas.width, p.x));
+    sel.y1 = Math.max(0, Math.min(canvas.height, p.y));
+    draw();
+  }, { passive: false });
+  window.addEventListener(end, () => { dragging = false; });
+}
+
+function reset() {
+  img = null; sel = null; cropBlob = null; previewData = null;
+  $('name').value = '';     // 名字綁魚不綁手機：每隻重新輸入
+  $('err').textContent = '';
+  $('err2').textContent = '';
+  show('step1');
+}
+
+let cropBlob = null, strength = 'medium', previewData = null;
+
+function cropToBlob() {
+  // 裁切（沒框就用整張）
+  let { x, y, w, h } = sel && norm(sel).w > 30 && norm(sel).h > 30
+    ? norm(sel) : { x: 0, y: 0, w: canvas.width, h: canvas.height };
+  const out = document.createElement('canvas');
+  out.width = w / scale > 1600 ? 1600 : w / scale;
+  out.height = out.width * (h / w);
+  const octx = out.getContext('2d');
+  octx.drawImage(img, x / scale, y / scale, w / scale, h / scale, 0, 0, out.width, out.height);
+  return new Promise(res => out.toBlob(res, 'image/jpeg', 0.9));
+}
+
+async function fetchPreview() {
+  const fd = new FormData();
+  fd.append('photo', cropBlob, 'fish.jpg');
+  fd.append('strength', strength);
+  const r = await fetch('/api/fish/preview', { method: 'POST', body: fd });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || '處理失敗');
+  previewData = j.image;
+  $('prevImg').src = previewData;
+}
+
+async function makePreview() {
+  if (!img) return;
+  if (!$('name').value.trim()) {
+    $('err').textContent = '❌ 請先幫魚取個名字！';
+    $('name').focus();
+    return;
+  }
+  $('err').textContent = '';
+  show('step3');
+  try {
+    cropBlob = await cropToBlob();
+    strength = 'medium';
+    setChip();
+    setHead(1);
+    await fetchPreview();
+    show('stepPrev');
+  } catch (e) {
+    show('step2');
+    $('err').textContent = '❌ ' + e.message + '，請再試一次';
+  }
+}
+
+function setChip() {
+  document.querySelectorAll('.chip').forEach(c =>
+    c.classList.toggle('on', c.dataset.s === strength));
+}
+
+async function reStrength(s) {
+  strength = s;
+  setChip();
+  $('err2').textContent = '';
+  document.querySelectorAll('.chip').forEach(c => c.disabled = true);
+  $('prevImg').style.opacity = 0.35;
+  try { await fetchPreview(); }
+  catch (e) { $('err2').textContent = '❌ ' + e.message; }
+  finally {
+    document.querySelectorAll('.chip').forEach(c => c.disabled = false);
+    $('prevImg').style.opacity = 1;
+  }
+}
+
+// 我的魚（存在這支手機）：點了讓自己的魚游到中央亮相
+function getMy() { try { return JSON.parse(localStorage.myFish || '[]'); } catch { return []; } }
+function saveMy(a) { localStorage.myFish = JSON.stringify(a.slice(-10)); }
+function renderMyFish() {
+  const box = $('myfish');
+  const list = getMy();
+  box.innerHTML = list.length
+    ? '<div class="hint" style="margin-top:18px">⭐ 我的魚 — 點一下，牠會游到大螢幕中央！</div>' : '';
+  for (const f of [...list].reverse()) {
+    const b = document.createElement('button');
+    b.className = 'bigbtn secondary';
+    b.textContent = '🔍 找「' + (f.name || '我的魚') + '」';
+    b.onclick = () => callMyFish(f, b);
+    box.appendChild(b);
+  }
+}
+async function callMyFish(f, b) {
+  b.disabled = true;
+  try {
+    const r = await fetch('/api/fish/' + f.id + '/feature', { method: 'POST' });
+    if (r.status === 404) {   // 魚被刪了 → 從手機清單移除
+      saveMy(getMy().filter(x => x.id !== f.id));
+      renderMyFish();
+      return;
+    }
+    b.textContent = '✨ 快看大螢幕！';
+  } catch {
+    b.textContent = '❌ 連不上';
+  }
+  setTimeout(() => {
+    b.textContent = '🔍 找「' + (f.name || '我的魚') + '」';
+    b.disabled = false;
+  }, 6000);
+}
+renderMyFish();
+
+// 餵魚：撒飼料到投影幕（伺服器 2 秒冷卻）
+async function feed(btn, foodType) {
+  const wrap = btn.closest('.feedwrap') || document;
+  const btns = wrap.querySelectorAll('.feed');
+  const orig = btn.textContent;
+  btns.forEach(b => b.disabled = true);
+  try {
+    const r = await fetch('/api/feed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ foodType: foodType || 'pellets' }),
+    });
+    const j = await r.json();
+    btn.textContent = r.ok ? '✅ 撒下去了！快看大螢幕！' : '⏳ ' + (j.error || '等一下再餵');
+  } catch {
+    btn.textContent = '❌ 連不上，再試一次';
+  }
+  setTimeout(() => { btn.textContent = orig; btns.forEach(b => b.disabled = false); }, 2500);
+}
+
+// 魚頭方向：1=右、-1=左（隨圖送出，投影端據此翻面游動）
+let headDir = 1;
+function setHead(h) {
+  headDir = h;
+  document.querySelectorAll('.hchip').forEach(c =>
+    c.classList.toggle('on', +c.dataset.h === h));
+}
+// 朝上/朝下 → 自動轉橫：朝上順轉90°變朝右；朝下順轉90°變朝左
+async function headVertical(which) {
+  await rotatePreview(1);
+  setHead(which === 'up' ? 1 : -1);
+}
+
+// 旋轉預覽圖 90 度（dir: 1 順時針 / -1 逆時針）
+async function rotatePreview(dir) {
+  if (!previewData) return;
+  const im = new Image();
+  await new Promise(res => { im.onload = res; im.src = previewData; });
+  const c = document.createElement('canvas');
+  c.width = im.height; c.height = im.width;
+  const g = c.getContext('2d');
+  g.translate(c.width / 2, c.height / 2);
+  g.rotate(dir * Math.PI / 2);
+  g.drawImage(im, -im.width / 2, -im.height / 2);
+  previewData = c.toDataURL('image/png');
+  $('prevImg').src = previewData;
+}
+
+async function send() {
+  if (!previewData) return;
+  if (!$('name').value.trim()) {
+    $('err2').textContent = '❌ 請先幫魚取個名字！';
+    return;
+  }
+  $('sendBtn').disabled = true;
+  $('err2').textContent = '';
+  show('step3');
+  try {
+    // 直接上傳預覽結果（已透明 → 伺服器直通，不重新去背）
+    const blob = await (await fetch(previewData)).blob();
+    const fd = new FormData();
+    fd.append('photo', blob, 'fish.png');
+    fd.append('name', $('name').value.trim());
+    fd.append('headDir', headDir);
+    const r = await fetch('/api/fish', { method: 'POST', body: fd });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || '上傳失敗');
+    // 記住「這是我的魚」（綁這支手機，之後可呼叫亮相）
+    if (j.fish) {
+      saveMy([...getMy(), { id: j.fish.id, name: j.fish.name }]);
+      renderMyFish();
+    }
+    show('done');
+  } catch (e) {
+    show('stepPrev');
+    $('err2').textContent = '❌ ' + e.message + '，請再試一次';
+  } finally {
+    $('sendBtn').disabled = false;
+  }
+}
+</script>
+</body>
+</html>

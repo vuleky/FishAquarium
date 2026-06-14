@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>水族箱控制台</title>
+<style>
+  :root {
+    --bg: #0b1623;
+    --card: #14283d;
+    --card-2: #0e1f31;
+    --ink: #e8f1f8;
+    --ink-dim: #8fb0cc;
+    --ink-faint: #5e7c97;
+    --line: rgba(255,255,255,.08);
+    --blue: #1e90d6;
+    --blue-hi: #34a8ee;
+    --gold: #ffd34d;
+    --green: #2ec27e;
+    --red: #d9483f;
+    --orange: #e8923a;
+    --r: 14px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "PingFang TC", "Microsoft JhengHei", sans-serif;
+    background: var(--bg); color: var(--ink); padding: 20px 20px 60px;
+    -webkit-font-smoothing: antialiased; }
+
+  /* ---- 頂部 ---- */
+  .topbar { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
+  .topbar h1 { font-size: 22px; margin: 0; }
+  .ws { font-size: 13px; padding: 4px 10px; border-radius: 20px; background: rgba(255,255,255,.06); }
+  .ws.on { color: #6ee7a8; } .ws.off { color: #ff9a9a; }
+  .topbar .spacer { flex: 1; }
+
+  /* ---- 卡片 ---- */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 16px; align-items: start; }
+  .card { background: var(--card); border-radius: var(--r); padding: 18px 18px 20px;
+    border: 1px solid var(--line); }
+  .card h2 { font-size: 16px; margin: 0 0 4px; color: #fff; display: flex; align-items: center; gap: 8px; }
+  .card .hint { color: var(--ink-faint); font-size: 12.5px; line-height: 1.5; margin: 0 0 14px; }
+  .sub-cap { font-size: 12px; color: var(--ink-faint); font-weight: 700; letter-spacing: .5px;
+    margin: 18px 0 8px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .sub-cap:first-of-type { border-top: 0; padding-top: 0; margin-top: 8px; }
+
+  /* ---- 按鈕 ---- */
+  button { font-family: inherit; cursor: pointer; border: none; border-radius: 10px;
+    background: var(--blue); color: #fff; font-size: 14px; padding: 9px 14px;
+    transition: transform .08s ease, filter .15s ease, background .15s ease; }
+  button:hover { filter: brightness(1.1); }
+  button:active { transform: scale(.95); }
+  button.ghost { background: rgba(255,255,255,.10); }
+  button.ghost:hover { background: rgba(255,255,255,.18); }
+  button.warn { background: var(--red); }
+  button.gold { background: var(--orange); }
+
+  /* 現場大動作按鈕 */
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .act { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    padding: 16px 10px; border-radius: 12px; line-height: 1.2; }
+  .act .ico { font-size: 24px; }
+  .act .lbl { font-size: 15px; font-weight: 700; }
+  .act .sub { font-size: 11px; opacity: .8; font-weight: 400; }
+
+  /* ---- 滑桿設定列 ---- */
+  .set { margin: 14px 0; }
+  .set-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
+  .set-label { font-size: 14px; color: var(--ink); }
+  .set-label .tip { display: block; font-size: 11px; color: var(--ink-faint); margin-top: 1px; }
+  .set-val { font-size: 15px; font-weight: 700; color: var(--gold); white-space: nowrap; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 6px;
+    border-radius: 4px; background: rgba(255,255,255,.14); outline: none; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px;
+    border-radius: 50%; background: #fff; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.45);
+    transition: transform .1s ease; }
+  input[type=range]:active::-webkit-slider-thumb { transform: scale(1.18); }
+  input[type=range]::-moz-range-thumb { width: 24px; height: 24px; border: none; border-radius: 50%;
+    background: #fff; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.45); }
+
+  /* 開關 switch */
+  .switch-row { display: flex; align-items: center; justify-content: space-between; margin: 14px 0; }
+  .switch { position: relative; width: 52px; height: 30px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch .track { position: absolute; inset: 0; background: rgba(255,255,255,.18);
+    border-radius: 30px; transition: background .2s; }
+  .switch .track::before { content: ''; position: absolute; width: 24px; height: 24px; left: 3px; top: 3px;
+    background: #fff; border-radius: 50%; transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+  .switch input:checked + .track { background: var(--green); }
+  .switch input:checked + .track::before { transform: translateX(22px); }
+
+  /* ---- QR ---- */
+  #qrBox { text-align: center; }
+  #qrBox img { width: 190px; border-radius: 12px; background: #fff; padding: 8px; }
+  #qrBox .url { font-size: 13px; color: var(--ink-dim); margin: 10px 0 14px; word-break: break-all; }
+  #qrFull { position: fixed; inset: 0; background: #fff; z-index: 50; display: none;
+    flex-direction: column; align-items: center; justify-content: center; cursor: pointer; }
+  #qrFull img { width: min(70vw, 70vh); }
+  #qrFull .t { color: #123; font-size: 5vmin; font-weight: 800; margin-bottom: 2vmin; }
+
+  /* ---- 縮圖（背景）---- */
+  .thumbs { display: flex; flex-wrap: wrap; gap: 12px; }
+  .thumb { background: var(--card-2); border-radius: 12px; padding: 10px; width: 158px;
+    text-align: center; position: relative; border: 1px solid var(--line); }
+  .thumb img { width: 100%; height: 90px; object-fit: contain; border-radius: 8px;
+    background: repeating-conic-gradient(#15314d 0% 25%, #0a1929 0% 50%) 0 0/16px 16px; }
+  .thumb .ops { display: flex; gap: 6px; justify-content: center; margin-top: 8px; }
+  .thumb .ops button { padding: 7px 9px; font-size: 13px; }
+  .fgtag { font-size: 11px; color: #7be0a0; margin-top: 5px; min-height: 14px; }
+
+  /* ---- 魚卡片（重點重構）---- */
+  #fishList { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+  .fish { background: var(--card-2); border-radius: 14px; overflow: hidden;
+    border: 1px solid var(--line); transition: border-color .15s; }
+  .fish.hidden-fish { opacity: .62; }
+  .fish.hidden-fish .fish-pic img { filter: grayscale(.5); }
+  .fish-pic { position: relative; height: 130px;
+    background: repeating-conic-gradient(#15314d 0% 25%, #0a1929 0% 50%) 0 0/18px 18px; }
+  .fish-pic img { width: 100%; height: 100%; object-fit: contain; }
+  .fish-pic .chk { position: absolute; top: 8px; left: 8px; width: 26px; height: 26px;
+    accent-color: var(--gold); cursor: pointer; }
+  .fish-pic .badge { position: absolute; top: 8px; right: 8px; background: rgba(8,16,28,.82);
+    color: var(--gold); font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 20px; }
+  .fish-pic .hide-flag { position: absolute; bottom: 8px; left: 8px; background: rgba(217,72,63,.9);
+    color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 20px; }
+  .fish-body { padding: 10px 12px 12px; }
+  .fish-name { font-size: 16px; font-weight: 700; text-align: center; cursor: pointer;
+    margin-bottom: 10px; display: flex; align-items: center; justify-content: center; gap: 5px; }
+  .fish-name .pen { font-size: 12px; opacity: .5; }
+  .fish-name:hover .pen { opacity: 1; }
+
+  .fish-primary { width: 100%; padding: 10px; font-size: 15px; font-weight: 700; margin-bottom: 10px;
+    background: linear-gradient(180deg, var(--blue-hi), var(--blue)); }
+
+  /* 尺寸 stepper */
+  .stepper { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,.05);
+    border-radius: 10px; padding: 5px; margin-bottom: 8px; }
+  .stepper .st-lbl { font-size: 12px; color: var(--ink-dim); padding-left: 6px; flex: none; }
+  .stepper button { width: 34px; height: 34px; padding: 0; font-size: 20px; border-radius: 8px;
+    background: rgba(255,255,255,.12); }
+  .stepper .st-val { flex: 1; text-align: center; font-size: 15px; font-weight: 700; color: var(--gold); }
+
+  /* 次要動作：圖示在上、文字在下 */
+  .fish-tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .tool { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 2px;
+    border-radius: 9px; background: rgba(255,255,255,.07); font-size: 17px; line-height: 1; }
+  .tool:hover { background: rgba(255,255,255,.15); }
+  .tool .t-lbl { font-size: 10.5px; color: var(--ink-dim); font-weight: 400; }
+  .tool.danger { background: rgba(217,72,63,.16); }
+  .tool.danger:hover { background: rgba(217,72,63,.32); }
+  .tool.danger .t-lbl { color: #ff9a9a; }
+
+  /* 批次列 */
+  .batchbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px;
+    background: var(--card-2); padding: 10px 12px; border-radius: 10px; }
+  .batchbar .selcount { color: var(--gold); font-size: 13px; font-weight: 700; }
+  .batchbar .spacer { flex: 1; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>🐟 水族箱控制台</h1>
+  <span id="wsState" class="ws off">● 連線中…</span>
+  <span class="spacer"></span>
+</div>
+
+<div class="grid">
+
+  <!-- 手機上傳 QR -->
+  <div class="card" id="qrBox">
+    <h2>📱 手機上傳入口</h2>
+    <p class="hint">家長掃這個 QR 進手機畫魚頁。</p>
+    <img id="qrImg" alt="QR">
+    <div class="url" id="qrUrl"></div>
+    <button class="big" style="width:100%;padding:12px;font-size:15px" onclick="qrFull()">⛶ 全螢幕顯示 QR（投影 / 貼牆給家長掃）</button>
+  </div>
+
+  <!-- 現場控制 -->
+  <div class="card">
+    <h2>🎬 現場控制</h2>
+    <p class="hint">活動進行中最常按的功能。</p>
+    <div class="actions">
+      <button class="act" id="pauseBtn" onclick="togglePause()">
+        <span class="ico">⏸</span><span class="lbl">暫停</span><span class="sub">凍結畫面</span></button>
+      <button class="act ghost" onclick="api('POST','/api/backgrounds/next')">
+        <span class="ico">⏭</span><span class="lbl">換背景</span><span class="sub">立刻切下一張</span></button>
+      <button class="act ghost" onclick="api('POST','/api/babies')">
+        <span class="ico">🐣</span><span class="lbl">生寶寶</span><span class="sub">隨機魚生小魚跟游</span></button>
+      <button class="act ghost" onclick="gather()">
+        <span class="ico">📸</span><span class="lbl">大合照</span><span class="sub">集合方陣＋名字＋倒數</span></button>
+      <button class="act ghost" onclick="parade()">
+        <span class="ico">🎓</span><span class="lbl">畢業巡游</span><span class="sub">列隊游過謝幕</span></button>
+    </div>
+    <div class="sub-cap">🍤 餵食（撒飼料、魚會搶食變大）</div>
+    <div class="actions" style="grid-template-columns:1fr 1fr 1fr">
+      <button class="act gold" onclick="feed('pellets')">
+        <span class="ico">🟠</span><span class="lbl">顆粒</span></button>
+      <button class="act gold" onclick="feed('flakes')">
+        <span class="ico">🍂</span><span class="lbl">薄片</span></button>
+      <button class="act gold" onclick="feed('treat')">
+        <span class="ico">✨</span><span class="lbl">特別餌</span><span class="sub">變大更多</span></button>
+    </div>
+    <div class="set" style="margin-top:18px">
+      <div class="set-top">
+        <span class="set-label">自動輪流亮相
+          <span class="tip">每隔一段時間自動讓一隻魚到中央亮相，每個小孩都有高光時刻</span></span>
+        <span class="set-val" id="v_autoSpotlightSec"></span>
+      </div>
+      <input type="range" id="autoSpotlightSec" min="0" max="600" step="30">
+    </div>
+  </div>
+
+  <!-- 魚群節奏 -->
+  <div class="card">
+    <h2>🐠 魚群節奏</h2>
+    <p class="hint">控制魚的數量、大小與游動感。</p>
+    <div class="set">
+      <div class="set-top"><span class="set-label">同時出現幾隻魚</span><span class="set-val" id="v_maxFishOnScreen"></span></div>
+      <input type="range" id="maxFishOnScreen" min="3" max="26" step="1">
+    </div>
+    <div class="set">
+      <div class="set-top"><span class="set-label">魚的基準大小
+        <span class="tip">新魚會放大登場再慢慢縮回這個大小</span></span><span class="set-val" id="v_fishSize"></span></div>
+      <input type="range" id="fishSize" min="1" max="5" step="0.5">
+    </div>
+    <div class="set">
+      <div class="set-top"><span class="set-label">每隻魚停留多久
+        <span class="tip">時間到就游出去，換下一隻登場</span></span><span class="set-val" id="v_fishOnScreenSec"></span></div>
+      <input type="range" id="fishOnScreenSec" min="15" max="300" step="5">
+    </div>
+    <div class="set">
+      <div class="set-top"><span class="set-label">游動速度</span><span class="set-val" id="v_swimSpeed"></span></div>
+      <input type="range" id="swimSpeed" min="0.3" max="2.5" step="0.1">
+    </div>
+  </div>
+
+  <!-- 畫面氛圍 -->
+  <div class="card">
+    <h2>🎨 畫面氛圍</h2>
+    <p class="hint">背景與聲音，讓魚更突出、更有水底感。</p>
+
+    <div class="sub-cap">背景輪播</div>
+    <div class="set">
+      <div class="set-top"><span class="set-label">每張背景顯示秒數</span><span class="set-val" id="v_bgIntervalSec"></span></div>
+      <input type="range" id="bgIntervalSec" min="10" max="300" step="5">
+    </div>
+
+    <div class="sub-cap">讓魚更突出</div>
+    <div class="set">
+      <div class="set-top"><span class="set-label">背景暗度
+        <span class="tip">調低 → 背景變暗，魚更跳出來</span></span><span class="set-val" id="v_bgBrightness"></span></div>
+      <input type="range" id="bgBrightness" min="0.3" max="1.2" step="0.05">
+    </div>
+    <div class="set">
+      <div class="set-top"><span class="set-label">背景對比</span><span class="set-val" id="v_bgContrast"></span></div>
+      <input type="range" id="bgContrast" min="0.7" max="1.5" step="0.05">
+    </div>
+    <div class="set">
+      <div class="set-top"><span class="set-label">背景水流動感
+        <span class="tip">0 = 靜止，越高背景晃越明顯</span></span><span class="set-val" id="v_bgMotion"></span></div>
+      <input type="range" id="bgMotion" min="0" max="3" step="0.1">
+    </div>
+    <div class="switch-row">
+      <span class="set-label">前景水草裝飾<span class="tip">魚會游到水草後面，更有立體感</span></span>
+      <label class="switch"><input type="checkbox" id="fgDecor"><span class="track"></span></label>
+    </div>
+
+    <div class="sub-cap">聲音</div>
+    <div class="switch-row">
+      <span class="set-label">環境音效<span class="tip">需先在投影頁點一下畫面才會出聲</span></span>
+      <label class="switch"><input type="checkbox" id="soundOn"><span class="track"></span></label>
+    </div>
+    <div class="set">
+      <div class="set-top"><span class="set-label">音量</span><span class="set-val" id="v_volume"></span></div>
+      <input type="range" id="volume" min="0" max="1" step="0.05">
+    </div>
+  </div>
+
+  <!-- 背景圖 -->
+  <div class="card" style="grid-column: 1 / -1;">
+    <h2>🖼 背景圖庫</h2>
+    <p class="hint">上傳的背景會自動輪播。每張可加一張「前景 PNG」（去背的水草/岩石/珊瑚），會蓋在魚前面 → 立體感。</p>
+    <button class="big" style="padding:11px 18px;font-size:15px;margin-bottom:14px"
+      onclick="document.getElementById('bgFile').click()">⬆️ 上傳背景圖</button>
+    <input type="file" id="bgFile" accept="image/*" hidden multiple>
+    <input type="file" id="fgFile" accept="image/png,image/webp" hidden>
+    <div class="thumbs" id="bgList"></div>
+  </div>
+
+  <!-- 魚清單 -->
+  <div class="card" style="grid-column: 1 / -1;">
+    <h2>🐟 魚清單（<span id="fishCount">0</span> 隻）</h2>
+    <p class="hint">點魚的名字可改名。勾選多隻可一次操作。</p>
+    <div class="batchbar">
+      <button class="ghost" onclick="selectAll(true)">☑️ 全選</button>
+      <button class="ghost" onclick="selectAll(false)">⬜ 取消</button>
+      <span class="selcount" id="selCount"></span>
+      <span class="spacer"></span>
+      <button class="ghost" onclick="bulk('hide')">🚫 隱藏</button>
+      <button class="ghost" onclick="bulk('show')">👁 顯示</button>
+      <button class="warn" onclick="bulkDelete()">🗑 刪除</button>
+    </div>
+    <div id="fishList"></div>
+  </div>
+
+</div>
+
+<div id="qrFull" onclick="this.style.display='none'">
+  <div class="t">📱 掃我，上傳你畫的魚！</div>
+  <img id="qrFullImg">
+</div>
+
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+let cfg = {};
+
+async function api(method, url, body) {
+  const r = await fetch(url, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return r.json();
+}
+
+// ---- 滑桿：值格式化（帶單位，好理解）----
+function fmt(k, v) {
+  v = +v;
+  switch (k) {
+    case 'autoSpotlightSec': return v === 0 ? '關閉' : v + ' 秒';
+    case 'bgIntervalSec':
+    case 'fishOnScreenSec': return v + ' 秒';
+    case 'maxFishOnScreen': return v + ' 隻';
+    case 'fishSize': return v + ' 號';
+    case 'swimSpeed': return v.toFixed(1) + '×';
+    case 'bgBrightness': return Math.round(v * 100) + '%';
+    case 'bgContrast': return v.toFixed(2);
+    case 'bgMotion': return v === 0 ? '靜止' : v.toFixed(1);
+    case 'volume': return Math.round(v * 100) + '%';
+    default: return v;
+  }
+}
+// 填色軌道（體感回饋）
+function fillTrack(el) {
+  const pct = ((el.value - el.min) / (el.max - el.min)) * 100;
+  el.style.background =
+    `linear-gradient(90deg, var(--blue-hi) ${pct}%, rgba(255,255,255,.14) ${pct}%)`;
+}
+
+const sliders = ['bgIntervalSec', 'maxFishOnScreen', 'fishSize', 'fishOnScreenSec', 'swimSpeed', 'volume',
+  'bgBrightness', 'bgContrast', 'bgMotion', 'autoSpotlightSec'];
+for (const k of sliders) {
+  $(k).addEventListener('input', () => { $('v_' + k).textContent = fmt(k, $(k).value); fillTrack($(k)); });
+  $(k).addEventListener('change', () => api('PATCH', '/api/config', { [k]: +$(k).value }));
+}
+$('soundOn').addEventListener('change', () => api('PATCH', '/api/config', { soundOn: $('soundOn').checked }));
+$('fgDecor').addEventListener('change', () => api('PATCH', '/api/config', { fgDecor: $('fgDecor').checked }));
+
+function applyCfg(c) {
+  cfg = c;
+  for (const k of sliders) { $(k).value = c[k]; $('v_' + k).textContent = fmt(k, c[k]); fillTrack($(k)); }
+  $('soundOn').checked = !!c.soundOn;
+  $('fgDecor').checked = !!c.fgDecor;
+  const p = $('pauseBtn');
+  p.querySelector('.ico').textContent = c.paused ? '▶️' : '⏸';
+  p.querySelector('.lbl').textContent = c.paused ? '繼續' : '暫停';
+  p.querySelector('.sub').textContent = c.paused ? '恢復播放' : '凍結畫面';
+}
+function togglePause() { api('PATCH', '/api/config', { paused: !cfg.paused }); }
+function feed(foodType) { api('POST', '/api/feed', { foodType }); }
+function parade() {
+  if (confirm('開始畢業巡游？全部的魚會列隊游過畫面（依魚數約 1~2 分鐘），結束後自動恢復正常。')) {
+    api('POST', '/api/parade');
+  }
+}
+function gather() {
+  if (confirm('開始大合照？全部的魚會集合到中央排好、秀出名字、倒數 3-2-1 給家長拍照，約 15 秒後自動散開。')) {
+    api('POST', '/api/gather');
+  }
+}
+
+// ---- 魚清單 ----
+const selected = new Set();
+function renderFish(list) {
+  $('fishCount').textContent = list.length;
+  $('fishList').innerHTML = '';
+  const ids = new Set(list.map(f => f.id));
+  for (const id of [...selected]) if (!ids.has(id)) selected.delete(id);
+  for (const f of [...list].reverse()) {
+    const size = f.size || 1;
+    const right = (f.headDir || 1) !== -1;
+    const d = document.createElement('div');
+    d.className = 'fish' + (f.hidden ? ' hidden-fish' : '');
+    d.innerHTML = `
+      <div class="fish-pic">
+        <input type="checkbox" class="chk" ${selected.has(f.id) ? 'checked' : ''}
+          onchange="toggleSel('${f.id}', this.checked)">
+        <span class="badge">×${size.toFixed(size < 1 ? 2 : 1)}</span>
+        ${f.hidden ? '<span class="hide-flag">隱藏中</span>' : ''}
+        <img src="/data/fish/${f.file}?v=${f.v || 0}" loading="lazy">
+      </div>
+      <div class="fish-body">
+        <div class="fish-name" onclick="renameFish('${f.id}')">
+          ${esc(f.name) || '（沒有名字）'} <span class="pen">✎</span></div>
+        <button class="fish-primary" onclick="api('POST','/api/fish/${f.id}/feature')">⭐ 游到中央亮相</button>
+        <div class="stepper">
+          <span class="st-lbl">大小</span>
+          <button onclick="sizeFish('${f.id}', ${size}, -1)">−</button>
+          <span class="st-val">×${size.toFixed(size < 1 ? 2 : 1)}</span>
+          <button onclick="sizeFish('${f.id}', ${size}, 1)">＋</button>
+        </div>
+        <div class="fish-tools">
+          <div class="tool" title="魚頭朝向，倒退游就點這裡切換"
+            onclick="api('PATCH','/api/fish/${f.id}',{headDir:${right ? -1 : 1}})">
+            ${right ? '🐟→' : '←🐟'}<span class="t-lbl">${right ? '頭朝右' : '頭朝左'}</span></div>
+          <div class="tool" title="把圖轉 90 度" onclick="api('POST','/api/fish/${f.id}/rotate')">
+            ↻<span class="t-lbl">轉90°</span></div>
+          <div class="tool" title="${f.hidden ? '讓牠重新出現' : '從畫面藏起來'}"
+            onclick="api('PATCH','/api/fish/${f.id}',{hidden:${!f.hidden}})">
+            ${f.hidden ? '👁' : '🚫'}<span class="t-lbl">${f.hidden ? '顯示' : '隱藏'}</span></div>
+          <div class="tool danger" title="永久刪除" onclick="delFish('${f.id}')">
+            🗑<span class="t-lbl">刪除</span></div>
+        </div>
+      </div>`;
+    $('fishList').appendChild(d);
+  }
+  updateSelCount();
+}
+function toggleSel(id, on) { on ? selected.add(id) : selected.delete(id); updateSelCount(); }
+function selectAll(on) {
+  selected.clear();
+  if (on) lastFish.forEach(f => selected.add(f.id));
+  renderFish(lastFish);
+}
+function updateSelCount() {
+  $('selCount').textContent = selected.size ? `已選 ${selected.size} 隻` : '';
+}
+async function bulk(action) {
+  if (!selected.size) return alert('先勾選魚');
+  await api('POST', '/api/fish/bulk', { ids: [...selected], action });
+}
+async function bulkDelete() {
+  if (!selected.size) return alert('先勾選魚');
+  if (!confirm(`確定刪除 ${selected.size} 隻魚？（無法復原）`)) return;
+  await api('POST', '/api/fish/bulk', { ids: [...selected], action: 'delete' });
+  selected.clear();
+}
+function delFish(id) {
+  if (confirm('確定刪除這隻魚？（無法復原）')) api('DELETE', '/api/fish/' + id);
+}
+function sizeFish(id, cur, dir) {
+  const next = Math.min(4, Math.max(0.35, +(cur * (dir > 0 ? 1.33 : 1 / 1.33)).toFixed(2)));
+  api('PATCH', '/api/fish/' + id, { size: next });
+}
+function renameFish(id) {
+  const f = lastFish.find(x => x.id === id);
+  const name = prompt('魚的名字：', f ? f.name : '');
+  if (name !== null && name.trim()) api('PATCH', '/api/fish/' + id, { name: name.trim() });
+}
+function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+// ---- 背景 ----
+function renderBgs(list) {
+  $('bgList').innerHTML = '';
+  for (const b of list) {
+    const d = document.createElement('div');
+    d.className = 'thumb';
+    d.innerHTML = `
+      <img src="/data/backgrounds/${b.file}" loading="lazy">
+      <div class="fgtag">${b.fg ? '🌿 已加前景' : ''}</div>
+      <div class="ops">
+        <button class="ghost" title="上傳前景 PNG（去背圖，蓋在魚前面做立體感）"
+          onclick="pickFg('${b.file}')">🌿 ${b.fg ? '換' : '加'}前景</button>
+        ${b.fg ? `<button class="ghost" title="移除前景" onclick="delFg('${b.file}')">✕</button>` : ''}
+        <button class="warn" title="刪除這張背景" onclick="delBg('${b.file}')">🗑</button>
+      </div>`;
+    $('bgList').appendChild(d);
+  }
+  if (!list.length) $('bgList').innerHTML = '<div style="color:#5e7c97">尚無背景圖，投影會用內建深海背景</div>';
+}
+let fgTarget = null;
+function pickFg(file) { fgTarget = file; $('fgFile').click(); }
+async function delFg(file) {
+  if (confirm('移除這張背景的前景圖？')) await api('DELETE', `/api/backgrounds/${encodeURIComponent(file)}/foreground`);
+}
+function delBg(f) {
+  if (confirm('刪除這張背景？')) api('DELETE', '/api/backgrounds/' + encodeURIComponent(f));
+}
+$('bgFile').addEventListener('change', async (e) => {
+  for (const f of e.target.files) {
+    const fd = new FormData();
+    fd.append('image', f);
+    await fetch('/api/backgrounds', { method: 'POST', body: fd });
+  }
+  e.target.value = '';
+});
+$('fgFile').addEventListener('change', async (e) => {
+  const f = e.target.files[0];
+  if (f && fgTarget) {
+    const fd = new FormData();
+    fd.append('image', f);
+    await fetch(`/api/backgrounds/${encodeURIComponent(fgTarget)}/foreground`, { method: 'POST', body: fd });
+  }
+  e.target.value = ''; fgTarget = null;
+});
+
+// ---- QR ----
+async function loadQR() {
+  const { url, dataUrl } = await api('GET', '/api/qr');
+  $('qrImg').src = dataUrl; $('qrFullImg').src = dataUrl;
+  $('qrUrl').textContent = url;
+}
+function qrFull() { $('qrFull').style.display = 'flex'; }
+
+// ---- 同步 ----
+let lastFish = [];
+async function loadAll() {
+  const s = await api('GET', '/api/state');
+  applyCfg(s.config);
+  lastFish = s.fish;
+  renderFish(s.fish);
+  renderBgs(s.backgrounds);
+}
+function connectWS() {
+  const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+  ws.onopen = () => { $('wsState').className = 'ws on'; $('wsState').textContent = '● 已連線'; loadAll(); };
+  ws.onclose = () => { $('wsState').className = 'ws off'; $('wsState').textContent = '● 斷線，重連中…'; setTimeout(connectWS, 2000); };
+  ws.onmessage = (ev) => {
+    const m = JSON.parse(ev.data);
+    if (m.type === 'config') applyCfg(m.config);
+    else if (m.type.startsWith('fish:') || m.type === 'backgrounds') loadAll();
+  };
+}
+loadAll(); loadQR(); connectWS();
+</script>
+</body>
+</html>
