@@ -14,9 +14,9 @@ const { processFish } = require('./fishProcess');
 const PORT = process.env.PORT || 3000;
 
 // 將伺服器綁定到 PORT 上
-server.listen(PORT, () => {
-  console.log(`伺服器正運作在 Port ${PORT} 上`);
-});
+//server.listen(PORT, () => {
+//  console.log(`伺服器正運作在 Port ${PORT} 上`);
+//});
 
 state.load();
 fs.mkdirSync(state.FISH_DIR, { recursive: true });
