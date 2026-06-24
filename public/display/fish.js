@@ -339,6 +339,12 @@ class Fish {
 
     // 垂直：正弦漂浮 + 緩慢漂移（落水中不套用）
     if (this.state === 'drop') return;
+    // 巡游離場：走直線（保持三行整齊），只輕微上下擺
+    if (this.state === 'exit' && this._parade) {
+      this.root.y = this.baseY + Math.sin(t * this.bobF + this.ph) * this.bobA * 0.5;
+      this.root.rotation = this._bank;
+      return;
+    }
     if (this.state !== 'feature') {
       // 沒在追飼料時，慢慢回到自己的常駐深度 → 餵食後不會全擠同一條水平線
       if (!this._foodTarget && !this._chase) {

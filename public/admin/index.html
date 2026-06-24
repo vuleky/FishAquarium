@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>水族箱控制台</title>
+<title>民族國小美術班專屬水族箱 控制台</title>
 <style>
   :root {
     --bg: #0b1623;
@@ -53,6 +53,7 @@
   button.ghost:hover { background: rgba(255,255,255,.18); }
   button.warn { background: var(--red); }
   button.gold { background: var(--orange); }
+  .gbatch.on { background: var(--orange); }
 
   /* 現場大動作按鈕 */
   .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -186,10 +187,25 @@
         <span class="ico">⏭</span><span class="lbl">換背景</span><span class="sub">立刻切下一張</span></button>
       <button class="act ghost" onclick="api('POST','/api/babies')">
         <span class="ico">🐣</span><span class="lbl">生寶寶</span><span class="sub">隨機魚生小魚跟游</span></button>
-      <button class="act ghost" onclick="gather()">
-        <span class="ico">📸</span><span class="lbl">大合照</span><span class="sub">集合方陣＋名字＋倒數</span></button>
       <button class="act ghost" onclick="parade()">
         <span class="ico">🎓</span><span class="lbl">畢業巡游</span><span class="sub">列隊游過謝幕</span></button>
+    </div>
+    <div class="sub-cap">📸 大合照（集合方陣＋名字＋倒數）</div>
+    <div class="set">
+      <div class="set-top"><span class="set-label">批次<span class="tip">A/B 批每次都是同一群魚</span></span></div>
+      <div class="actions" style="grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <button class="act ghost gbatch on" data-b="all" onclick="setGBatch('all')"><span class="lbl">全部</span><span class="sub">≤26</span></button>
+        <button class="act ghost gbatch" data-b="A" onclick="setGBatch('A')"><span class="lbl">A 批</span><span class="sub">前半</span></button>
+        <button class="act ghost gbatch" data-b="B" onclick="setGBatch('B')"><span class="lbl">B 批</span><span class="sub">後半</span></button>
+      </div>
+    </div>
+    <div class="set">
+      <div class="set-top"><span class="set-label">拍照停留秒數<span class="tip">排好後停留，最後 3 秒倒數</span></span><span class="set-val" id="v_gatherHoldSec">10 秒</span></div>
+      <input type="range" id="gatherHoldSec" min="4" max="300" step="5" value="10">
+    </div>
+    <div class="actions" style="grid-template-columns:1fr 1fr;gap:8px">
+      <button class="act gold" onclick="gather()"><span class="ico">📸</span><span class="lbl">開始大合照</span></button>
+      <button class="act ghost" onclick="api('POST','/api/gather/skip')"><span class="ico">⏭</span><span class="lbl">下一批 / 散開</span></button>
     </div>
     <div class="sub-cap">🍤 餵食（撒飼料、魚會搶食變大）</div>
     <div class="actions" style="grid-template-columns:1fr 1fr 1fr">
@@ -207,6 +223,14 @@
         <span class="set-val" id="v_autoSpotlightSec"></span>
       </div>
       <input type="range" id="autoSpotlightSec" min="0" max="600" step="30">
+    </div>
+    <div class="set">
+      <div class="set-top">
+        <span class="set-label">晨昏→深夜循環
+          <span class="tip">一輪秒數，走晨→午→昏→夜。0=關（固定）。建議現場關燈更明顯</span></span>
+        <span class="set-val" id="v_dayCycleSec"></span>
+      </div>
+      <input type="range" id="dayCycleSec" min="0" max="600" step="30">
     </div>
   </div>
 
@@ -263,6 +287,10 @@
     <div class="switch-row">
       <span class="set-label">前景水草裝飾<span class="tip">魚會游到水草後面，更有立體感</span></span>
       <label class="switch"><input type="checkbox" id="fgDecor"><span class="track"></span></label>
+    </div>
+    <div class="switch-row">
+      <span class="set-label">遠景模糊<span class="tip">遠的魚帶輕微模糊 = 景深感</span></span>
+      <label class="switch"><input type="checkbox" id="farBlur"><span class="track"></span></label>
     </div>
 
     <div class="sub-cap">聲音</div>
@@ -329,6 +357,7 @@ function fmt(k, v) {
   v = +v;
   switch (k) {
     case 'autoSpotlightSec': return v === 0 ? '關閉' : v + ' 秒';
+    case 'dayCycleSec': return v === 0 ? '關閉' : v + ' 秒';
     case 'bgIntervalSec':
     case 'fishOnScreenSec': return v + ' 秒';
     case 'maxFishOnScreen': return v + ' 隻';
@@ -349,19 +378,21 @@ function fillTrack(el) {
 }
 
 const sliders = ['bgIntervalSec', 'maxFishOnScreen', 'fishSize', 'fishOnScreenSec', 'swimSpeed', 'volume',
-  'bgBrightness', 'bgContrast', 'bgMotion', 'autoSpotlightSec'];
+  'bgBrightness', 'bgContrast', 'bgMotion', 'autoSpotlightSec', 'dayCycleSec'];
 for (const k of sliders) {
   $(k).addEventListener('input', () => { $('v_' + k).textContent = fmt(k, $(k).value); fillTrack($(k)); });
   $(k).addEventListener('change', () => api('PATCH', '/api/config', { [k]: +$(k).value }));
 }
 $('soundOn').addEventListener('change', () => api('PATCH', '/api/config', { soundOn: $('soundOn').checked }));
 $('fgDecor').addEventListener('change', () => api('PATCH', '/api/config', { fgDecor: $('fgDecor').checked }));
+$('farBlur').addEventListener('change', () => api('PATCH', '/api/config', { farBlur: $('farBlur').checked }));
 
 function applyCfg(c) {
   cfg = c;
   for (const k of sliders) { $(k).value = c[k]; $('v_' + k).textContent = fmt(k, c[k]); fillTrack($(k)); }
   $('soundOn').checked = !!c.soundOn;
   $('fgDecor').checked = !!c.fgDecor;
+  $('farBlur').checked = c.farBlur ?? true;
   const p = $('pauseBtn');
   p.querySelector('.ico').textContent = c.paused ? '▶️' : '⏸';
   p.querySelector('.lbl').textContent = c.paused ? '繼續' : '暫停';
@@ -374,10 +405,14 @@ function parade() {
     api('POST', '/api/parade');
   }
 }
+let gBatch = 'all';
+function setGBatch(b) {
+  gBatch = b;
+  document.querySelectorAll('.gbatch').forEach(x => x.classList.toggle('on', x.dataset.b === b));
+}
+$('gatherHoldSec').addEventListener('input', () => { $('v_gatherHoldSec').textContent = $('gatherHoldSec').value + ' 秒'; });
 function gather() {
-  if (confirm('開始大合照？全部的魚會集合到中央排好、秀出名字、倒數 3-2-1 給家長拍照，約 15 秒後自動散開。')) {
-    api('POST', '/api/gather');
-  }
+  api('POST', '/api/gather', { batch: gBatch, holdSec: +$('gatherHoldSec').value });
 }
 
 // ---- 魚清單 ----

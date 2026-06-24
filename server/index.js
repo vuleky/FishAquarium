@@ -12,12 +12,6 @@ const state = require('./state');
 const { processFish } = require('./fishProcess');
 
 const PORT = process.env.PORT || 3000;
-
-// 將伺服器綁定到 PORT 上
-//server.listen(PORT, () => {
-//  console.log(`伺服器正運作在 Port ${PORT} 上`);
-//});
-
 state.load();
 fs.mkdirSync(state.FISH_DIR, { recursive: true });
 fs.mkdirSync(state.BG_DIR, { recursive: true });
@@ -25,7 +19,13 @@ fs.mkdirSync(state.FG_DIR, { recursive: true });
 
 const app = express();
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '..', 'public')));
+// 投影/控制/上傳頁與 JS 不快取 → 改檔後重整就生效，免被瀏覽器留舊版
+app.use(express.static(path.join(__dirname, '..', 'public'), {
+  etag: false,
+  setHeaders(res, p) {
+    if (/\.(html|js)$/i.test(p)) res.setHeader('Cache-Control', 'no-store');
+  },
+}));
 app.use('/data', express.static(state.DATA_DIR, { maxAge: '1h' }));
 
 const upload = multer({
@@ -60,7 +60,8 @@ app.patch('/api/config', (req, res) => {
 app.post('/api/fish/preview', upload.single('photo'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '沒有收到照片' });
-    const png = await processFish(req.file.buffer, req.body.strength);
+    // 預覽一律去背（這支端點本來就是去背預覽用）
+    const png = await processFish(req.file.buffer, { strength: req.body.strength, removeBg: true });
     res.json({ ok: true, image: 'data:image/png;base64,' + png.toString('base64') });
   } catch (e) {
     res.status(422).json({ error: e.message || '處理失敗，請重拍一張' });
@@ -74,7 +75,10 @@ app.post('/api/fish', upload.single('photo'), async (req, res) => {
     if (!String(req.body.name || '').trim()) {
       return res.status(422).json({ error: '請輸入魚的名字' });
     }
-    const png = await processFish(req.file.buffer, req.body.strength);
+    const png = await processFish(req.file.buffer, {
+      strength: req.body.strength,
+      removeBg: req.body.removeBg === 'true' || req.body.removeBg === true,
+    });
     const id = crypto.randomBytes(6).toString('hex');
     const file = `${id}.png`;
     fs.writeFileSync(path.join(state.FISH_DIR, file), png);
@@ -152,9 +156,18 @@ app.post('/api/parade', (req, res) => {
   res.json({ ok: true });
 });
 
-// 大合照：全部魚集合方陣、秀名字、倒數
+// 大合照：集合方陣、秀名字、倒數。body: { batch:'A'|'B'|'all', holdSec }
 app.post('/api/gather', (req, res) => {
-  broadcast({ type: 'gather' });
+  const b = req.body || {};
+  const batch = ['A', 'B', 'all'].includes(b.batch) ? b.batch : 'all';
+  const holdSec = Math.min(300, Math.max(4, Number(b.holdSec) || 4));
+  broadcast({ type: 'gather', batch, holdSec });
+  res.json({ ok: true });
+});
+
+// 強制結束大合照、立刻散開（可馬上開下一批）
+app.post('/api/gather/skip', (req, res) => {
+  broadcast({ type: 'gather:skip' });
   res.json({ ok: true });
 });
 
@@ -193,10 +206,13 @@ app.delete('/api/backgrounds/:file', (req, res) => {
 app.post('/api/backgrounds/:file/foreground', upload.single('image'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '沒有收到圖片' });
-    const base = path.parse(path.basename(req.params.file)).name;
+    const bgFile = path.basename(req.params.file);
+    const base = path.parse(bgFile).name;
     const sharp = require('sharp');
+    // 拉成跟背景「完全相同尺寸」→ 投影端疊上去自動對齊（前景來源尺寸不必相同）
+    const bgMeta = await sharp(path.join(state.BG_DIR, bgFile)).metadata();
     const buf = await sharp(req.file.buffer).rotate()
-      .resize(2560, 1440, { fit: 'inside', withoutEnlargement: true })
+      .resize(bgMeta.width, bgMeta.height, { fit: 'fill' })
       .png().toBuffer();
     fs.writeFileSync(path.join(state.FG_DIR, base + '.png'), buf);
     broadcast({ type: 'backgrounds', backgrounds: state.listBackgrounds() });
@@ -254,12 +270,12 @@ function lanIP() {
   return 'localhost';
 }
 
-server.listen(PORT, () => {
-  console.log('');
-  console.log('🐟 水族箱投影系統啟動！');
-  console.log(`   入口頁   http://localhost:${PORT}/       （先選投影、上傳或管理台）`);
-  console.log(`   投影頁   http://localhost:${PORT}/display/   （按 F11 全螢幕）`);
-  console.log(`   控制台   http://localhost:${PORT}/admin/`);
-  console.log(`   手機上傳 http://${lanIP()}:${PORT}/upload/   （或掃控制台的 QR Code）`);
-  console.log('');
-});
+//server.listen(PORT, () => {
+//  console.log('');
+//  console.log('🐟 水族箱投影系統啟動！');
+//  console.log(`   入口頁   http://localhost:${PORT}/       （先選投影、上傳或管理台）`);
+//  console.log(`   投影頁   http://localhost:${PORT}/display/   （按 F11 全螢幕）`);
+//  console.log(`   控制台   http://localhost:${PORT}/admin/`);
+//  console.log(`   手機上傳 http://${lanIP()}:${PORT}/upload/   （或掃控制台的 QR Code）`);
+//  console.log('');
+//});

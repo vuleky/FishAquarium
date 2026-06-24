@@ -19,6 +19,8 @@ const DEFAULT_CONFIG = {
   paused: false,
   fgDecor: true,          // 程序化前景水草/岩石（立體遮擋感）
   autoSpotlightSec: 180,  // 自動輪流亮相間隔秒數（0=關）
+  dayCycleSec: 0,         // 晨昏→深夜一輪秒數（0=關，固定中午）
+  farBlur: true,          // 遠景魚模糊（景深）
   bgBrightness: 0.85,     // 背景暗度（<1 變暗，讓魚突出）
   bgContrast: 1.0,        // 背景對比
   bgMotion: 1.0,          // 背景水流動感強度（0=靜止）

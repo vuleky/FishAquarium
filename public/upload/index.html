@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>上傳你的魚 🐟</title>
+<title>民族國小美術班專屬水族箱 上傳</title>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body {
@@ -99,7 +99,8 @@
   <div class="hint">用手指框出「魚」的範圍（可重畫）</div>
   <div id="cropWrap"><canvas id="cropCanvas"></canvas></div>
   <input type="text" id="name" placeholder="🐟 幫魚取個名字（必填）" maxlength="12" required>
-  <button class="bigbtn" id="prevBtn" onclick="makePreview()">✨ 去背預覽</button>
+  <button class="bigbtn" id="sendDirectBtn" onclick="directSend()">🌊 直接送出</button>
+  <div class="hint"><a href="#" onclick="makePreview();return false" style="color:#ffd34d">需要才去背預覽 →</a></div>
   <button class="bigbtn secondary" onclick="reset()">↩️ 重選照片</button>
   <div id="err"></div>
 </div>
@@ -253,7 +254,7 @@ function reset() {
 
 let cropBlob = null, strength = 'medium', previewData = null;
 
-function cropToBlob() {
+function cropToBlob(png) {
   // 裁切（沒框就用整張）
   let { x, y, w, h } = sel && norm(sel).w > 30 && norm(sel).h > 30
     ? norm(sel) : { x: 0, y: 0, w: canvas.width, h: canvas.height };
@@ -262,7 +263,39 @@ function cropToBlob() {
   out.height = out.width * (h / w);
   const octx = out.getContext('2d');
   octx.drawImage(img, x / scale, y / scale, w / scale, h / scale, 0, 0, out.width, out.height);
-  return new Promise(res => out.toBlob(res, 'image/jpeg', 0.9));
+  return png ? new Promise(res => out.toBlob(res, 'image/png'))
+             : new Promise(res => out.toBlob(res, 'image/jpeg', 0.9));
+}
+
+// 直接送出（不去背）：裁切圖 PNG 上傳，removeBg=false
+async function directSend() {
+  if (!img) return;
+  if (!$('name').value.trim()) {
+    $('err').textContent = '❌ 請先幫魚取個名字！';
+    $('name').focus();
+    return;
+  }
+  $('err').textContent = '';
+  $('sendDirectBtn').disabled = true;
+  show('step3');
+  try {
+    const blob = await cropToBlob(true);
+    const fd = new FormData();
+    fd.append('photo', blob, 'fish.png');
+    fd.append('name', $('name').value.trim());
+    fd.append('removeBg', 'false');
+    fd.append('headDir', headDir);
+    const r = await fetch('/api/fish', { method: 'POST', body: fd });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || '上傳失敗');
+    if (j.fish) { saveMy([...getMy(), { id: j.fish.id, name: j.fish.name }]); renderMyFish(); }
+    show('done');
+  } catch (e) {
+    show('step2');
+    $('err').textContent = '❌ ' + e.message + '，請再試一次';
+  } finally {
+    $('sendDirectBtn').disabled = false;
+  }
 }
 
 async function fetchPreview() {

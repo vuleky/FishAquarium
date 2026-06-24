@@ -8,7 +8,9 @@ const MAX_OUT = 640;    // 輸出魚圖最大邊長
 // 去背強度 → 與背景色的距離容忍值
 const TOLERANCES = { low: 36, medium: 52, high: 72 };
 
-async function processFish(inputBuffer, strength = 'medium') {
+// opts: { strength, removeBg } — removeBg 預設關，只裁邊縮圖轉 PNG
+async function processFish(inputBuffer, opts = {}) {
+  const { strength = 'medium', removeBg = false } = opts;
   // EXIF 轉正 + 限制尺寸
   let img = sharp(inputBuffer).rotate()
     .resize(MAX_WORK, MAX_WORK, { fit: 'inside', withoutEnlargement: true });
@@ -17,10 +19,8 @@ async function processFish(inputBuffer, strength = 'medium') {
     .toBuffer({ resolveWithObject: true });
   const { width: w, height: h } = info;
 
-  if (hasTransparency(data)) {
-    // 手機 App 已去背 → 只裁邊縮圖
-    return finalize(data, w, h);
-  }
+  // 已含透明（手機去背的 PNG）→ 直通裁縮；不去背 → 也直接裁縮
+  if (hasTransparency(data) || !removeBg) return finalize(data, w, h);
 
   removeBackground(data, w, h, TOLERANCES[strength] || TOLERANCES.medium);
   featherEdges(data, w, h);
@@ -129,3 +129,24 @@ async function finalize(data, w, h) {
 }
 
 module.exports = { processFish };
+
+// ponytail: 一個可跑的自檢，跑 `node server/fishProcess.js`
+if (require.main === module) {
+  (async () => {
+    const assert = require('assert');
+    const white = await sharp({ create: { width: 200, height: 200, channels: 3, background: '#fff' } })
+      .composite([{ input: await sharp({ create: { width: 80, height: 80, channels: 3, background: '#f80' } }).png().toBuffer(), top: 60, left: 60 }])
+      .jpeg().toBuffer();
+    const transparent = (d) => d.some((v, i) => i % 4 === 3 && v < 200);
+    const raw = async (buf) => (await sharp(buf).ensureAlpha().raw().toBuffer());
+
+    assert(!transparent(await raw(await processFish(white, { removeBg: false }))), '不去背應保留白底');
+    assert(transparent(await raw(await processFish(white, { removeBg: true }))), '去背應有透明');
+
+    const alreadyClear = await sharp({ create: { width: 100, height: 100, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+      .composite([{ input: await sharp({ create: { width: 40, height: 40, channels: 4, background: { r: 255, g: 0, b: 0, alpha: 1 } } }).png().toBuffer(), top: 30, left: 30 }])
+      .png().toBuffer();
+    assert(transparent(await raw(await processFish(alreadyClear, { removeBg: false }))), '已透明 PNG 應直通保留透明');
+    console.log('fishProcess 自檢通過 ✓');
+  })().catch(e => { console.error(e); process.exit(1); });
+}

@@ -12,19 +12,62 @@
   const water = new PIXI.Container();        // 受水波位移影響的部分
   const bgLayer = new PIXI.Container();
   const caustics = new Caustics(W, H);
+  const shadowGfx = new PIXI.Graphics();     // 沙地柔影（單一 Graphics 每幀重畫）
+  const fishLayerFar = new PIXI.Container();  // 遠景魚（共用一個模糊濾鏡）
+  const farBlurFilter = [new PIXI.BlurFilter({ strength: 3 })];
+  fishLayerFar.filters = farBlurFilter;
   const fishLayer = new PIXI.Container();
   fishLayer.sortableChildren = true;
   const seaweed = new Seaweed(W, H);         // 程序化前景（蓋在魚前）
   const fgLayer = new PIXI.Container();      // 背景配對的前景圖（蓋在魚前）
   const splashFx = new SplashFX();           // 入水水花（最上層）
   const food = new FoodFX(W, H);             // 飼料
-  water.addChild(bgLayer, caustics.container, fishLayer, food.container, seaweed.container, fgLayer, splashFx.container);
+  water.addChild(bgLayer, caustics.container, shadowGfx, fishLayerFar, fishLayer, food.container, seaweed.container, fgLayer, splashFx.container);
 
   const bubbles = new Bubbles(W, H);
   const rays = new LightRays(W, H);
   const motes = new Motes(W, H);
   const vignette = makeVignette(W, H);
-  app.stage.addChild(water, bubbles.container, rays.container, motes.container, vignette);
+  // 晨昏→深夜色調 overlay（蓋全場做色彩氛圍）
+  const dayOverlay = new PIXI.Sprite(PIXI.Texture.WHITE);
+  dayOverlay.width = W; dayOverlay.height = H; dayOverlay.alpha = 0;
+  app.stage.addChild(water, bubbles.container, rays.container, motes.container, vignette, dayOverlay);
+
+  // 時段循環：dawn→noon→dusk→night→…，config.dayCycleSec 一輪秒數（0=關，固定中午）
+  // ponytail: 純色 overlay 做色調；真正的「魚輪廓螢光」需 per-fish glow filter，量大再加
+  const DAY_PHASES = [
+    { tint: 0xff9a4d, alpha: 0.20 }, // 晨：暖橘
+    { tint: 0xffffff, alpha: 0.00 }, // 午：清澈
+    { tint: 0xff7a3c, alpha: 0.24 }, // 昏：橘紫
+    { tint: 0x05143a, alpha: 0.52 }, // 夜：深藍壓暗
+  ];
+  function lerpColor(a, b, t) {
+    const ar = a >> 16, ag = (a >> 8) & 255, ab = a & 255;
+    const br = b >> 16, bg = (b >> 8) & 255, bb = b & 255;
+    return ((ar + (br - ar) * t) & 255) << 16 | ((ag + (bg - ag) * t) & 255) << 8 | ((ab + (bb - ab) * t) & 255);
+  }
+  function updateDayCycle(tSec) {
+    const dur = config.dayCycleSec || 0;
+    if (dur <= 0) { dayOverlay.alpha = 0; return; }
+    const p = (tSec % dur) / dur * DAY_PHASES.length; // 0..4
+    const i = Math.floor(p) % DAY_PHASES.length;
+    const j = (i + 1) % DAY_PHASES.length;
+    const f = p - Math.floor(p);
+    const a = DAY_PHASES[i], b = DAY_PHASES[j];
+    dayOverlay.tint = lerpColor(a.tint, b.tint, f);
+    dayOverlay.alpha = a.alpha + (b.alpha - a.alpha) * f;
+  }
+
+  // 沙地柔影：每隻魚在底部投一抹淡影（單一 Graphics，每幀重畫）
+  function drawShadows() {
+    shadowGfx.clear();
+    const floorY = H * 0.9;
+    for (const f of fishMgr.active.values()) {
+      if (f.state === 'drop') continue;
+      const w = f.texW * Math.abs(f.root.scale.x);
+      shadowGfx.ellipse(f.root.x, floorY, w * 0.4, w * 0.1).fill({ color: 0x000000, alpha: 0.16 });
+    }
+  }
 
   // 水中晃動（位移濾鏡）
   const noiseSprite = new PIXI.Sprite(Tex.noise());
@@ -169,7 +212,8 @@
           this.fill();
         };
         this.active.set(id, fish);
-        fishLayer.addChild(fish.root);
+        // 遠的魚（depth 小）放模糊層 → 景深感
+        (fish.depth < 0.35 ? fishLayerFar : fishLayer).addChild(fish.root);
         if (opts.announce && d.name) showBanner(`🐟 ${d.name} 的魚來了！`);
         else if (opts.announce) showBanner('🐟 新的魚游進來了！');
         return fish;
@@ -385,40 +429,44 @@
       for (const f of this.active.values()) f._babyCount = 0;
     },
 
-    // ===== A 修密版列隊：一大群魚浩浩蕩蕩游過 + 名字，無空檔 =====
+    // ===== 畢業巡游：瞬間清空 → 三行從右側盡頭列隊往左游過 =====
     async startParadeLine() {
       if (this.parading) return;
       this.parading = 'line';
       this._clearBabies();
-      this.paradeIds = [...this.roster.values()].filter(d => this.visible(d)).map(d => d.id);
-      this._paradeIdx = 0;
-      this._paradeT = 0;
-      this._lane = 0;
-      for (const f of this.active.values()) {
-        if (f.state === 'feature') { f.state = 'swim'; f._tweenScaleBack = true; }
-        f.startExit();
-      }
+      // 瞬間離場：場上的魚立刻消失
+      for (const f of this.active.values()) f.destroy();
+      this.active.clear();
+      this.queue = [];
+      for (const f of this.paradeFish) f.destroy();
+      this.paradeFish.clear();
       showBanner('🎓 畢業巡游！謝謝每一位小畫家');
-      // 預先放一批散佈在畫面（消除起手空檔）
-      const initial = Math.min(7, this.paradeIds.length);
-      for (let i = 0; i < initial; i++) {
-        await this._spawnParade(this.paradeIds[this._paradeIdx++], -W * 0.05 + (i / initial) * W * 1.0);
+      const ids = [...this.roster.values()].filter(d => this.visible(d)).map(d => d.id);
+      const ROWS = 3;
+      const spacing = W * 0.22;                 // 同一行前後車距
+      for (let i = 0; i < ids.length; i++) {
+        const row = i % ROWS;                    // 三行交錯分配
+        const col = Math.floor(i / ROWS);
+        await this._spawnParade(ids[i], {
+          x: W + W * 0.12 + col * spacing,       // 從右側盡頭外排隊
+          y: H * (0.26 + 0.24 * row),            // 三行：上中下
+        });
       }
     },
-    async _spawnParade(id, startX) {
+    async _spawnParade(id, pos) {
       const d = this.roster.get(id);
       if (!d) return;
       try {
         const fish = await Fish.create(d, W, H, { ratio: sizeToRatio(config.fishSize) });
         fish._parade = true;
         fish.state = 'exit';
-        fish._exitDir = 1;
-        fish.dir = 1;
+        fish._exitDir = -1;                       // 往左游
+        fish.dir = -1;
         fish._applyFlip();
-        fish.speed = 1.45;                                // 齊速莊重前進（exit 內再 ×1.6）
-        fish.root.x = (startX !== undefined) ? startX : -fish.texW * fish.baseScale - 30;
-        fish.baseY = H * (0.22 + 0.17 * (this._lane++ % 4)); // 四條泳道交錯，更密
-        fish.root.y = fish.baseY;
+        fish.speed = 1.35;                        // 齊速莊重（exit 內再 ×1.6）
+        fish.root.x = pos.x;
+        fish.baseY = pos.y;
+        fish.root.y = pos.y;
         if (d.name) {
           const lbl = new PIXI.Text({
             text: d.name,
@@ -431,6 +479,7 @@
           lbl.anchor.set(0.5, 0);
           lbl.y = fish.texH / 2 + 16;
           lbl.scale.set(1 / fish.root.scale.x);
+          lbl.alpha = 0.8;            // 半透明 → 不全擋後面的魚
           fish.root.addChild(lbl);
         }
         fish.onExited = (f) => { this.paradeFish.delete(f); f.destroy(); };
@@ -439,37 +488,42 @@
       } catch {}
     },
     _paradeTick(t, dt) {
-      for (const fish of this.active.values()) fish.update(t, dt, config.swimSpeed);
-      this._paradeT += dt;
-      if (this._paradeIdx < this.paradeIds.length && this._paradeT > 60) { // 每 ~1 秒進一隻
-        this._paradeT = 0;
-        this._spawnParade(this.paradeIds[this._paradeIdx++]);
-      }
       for (const f of this.paradeFish) f.update(t, dt, 1);
-      if (this._paradeIdx >= this.paradeIds.length &&
-          this.paradeFish.size === 0 && this.active.size === 0) {
+      if (this.paradeFish.size === 0) {
         this.parading = false;
         showBanner('🌊 謝謝大家，明年見！');
         this.sync([...this.roster.values()]);
       }
     },
 
-    // ===== B 大合照：全部魚集合成方陣、秀名字、倒數拍照、再散開 =====
-    async startGather() {
+    // ===== B 大合照：集合成方陣、秀名字、倒數拍照、再散開 =====
+    // batch: 'A'|'B'|'all'；holdSec: 排好後停留秒數（最後 3 秒倒數 3-2-1-📸）
+    async startGather(batch = 'all', holdSec = 4) {
       if (this.parading) return;
-      this.parading = 'gather';
       this._clearBabies();
-      const ids = [...this.roster.values()].filter(d => this.visible(d)).map(d => d.id);
-      // 把不在場的魚也叫出來（不受同場上限）
+      // 依 createdAt 穩定排序，A=前半、B=後半（每次相同）
+      let visible = [...this.roster.values()].filter(d => this.visible(d))
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      if (batch === 'A' || batch === 'B') {
+        const half = Math.ceil(visible.length / 2);
+        visible = batch === 'A' ? visible.slice(0, half) : visible.slice(half);
+      }
+      const ids = visible.map(d => d.id);
+      // 只留這批在場，其餘瞬間清掉；不在場的這批叫出來
+      for (const f of [...this.active.values()]) {
+        if (!ids.includes(f.id)) { f.destroy(); this.active.delete(f.id); }
+      }
       this.queue = [];
       await Promise.all(ids.filter(id => !this.active.has(id)).map(id => this.spawn(id)));
-      const fishes = [...this.active.values()];
-      this._assignSlots(fishes);
+      // 設定全部就緒後，最後才開 parading（避免 ticker 在沒 _slot 時提早進 hold）
+      this._assignSlots([...this.active.values()]);
       this._gatherPhase = 'in';
       this._gatherT = 0;
       this._gLabels = [];
       this._lastCd = 99;
+      this._gatherHoldSec = Math.max(4, holdSec);
       showBanner('📸 大合照！大家集合～');
+      this.parading = 'gather';
     },
     _assignSlots(fishes) {
       const n = fishes.length;
@@ -496,19 +550,23 @@
           style: { fontFamily: 'PingFang TC, Microsoft JhengHei, sans-serif',
             fontSize: 30, fill: 0xffffff, fontWeight: '700', stroke: { color: 0x06365e, width: 6 } },
         });
-        lbl.anchor.set(0.5, 0);
-        lbl.y = f.texH / 2 + 12;
+        // 疊在自己魚身上、半透明 → 只蓋自己，不擋到隔壁的魚
+        lbl.anchor.set(0.5, 0.5);
+        lbl.y = f.texH * 0.32;
         lbl.scale.set(1 / Math.max(0.2, Math.abs(f.root.scale.x)));
+        lbl.alpha = 0.78;
         f.root.addChild(lbl);
         this._gLabels.push(lbl);
       }
     },
     _finishGather() {
+      setCountdown(''); setGInfo('');
       for (const l of this._gLabels) { if (l.parent) l.parent.removeChild(l); l.destroy(); }
       this._gLabels = [];
       for (const f of this.active.values()) { f._slot = null; f.homeY = H * (0.18 + 0.64 * Math.random()); }
       this.parading = false;
       showBanner('🌊 謝謝大家！');
+      this.sync([...this.roster.values()]); // 恢復正常輪替（批次模式有清掉非該批的魚）
     },
     _gatherTick(t, dt) {
       const fishes = [...this.active.values()];
@@ -528,23 +586,28 @@
         }
         this._gatherT += dt;
         if (settled || this._gatherT > 240) {
-          this._gatherPhase = 'hold'; this._gatherT = 0; this._lastCd = 99;
+          this._gatherPhase = 'hold'; this._lastCd = 99;
+          this._holdStart = performance.now();   // 牆上時鐘，不受掉幀影響
           this._addGatherLabels();
         }
       } else if (this._gatherPhase === 'hold') {
+        // 魚定住排好，撐到倒數結束才散
         for (const f of fishes) {
           if (f._slot) { f.root.x += (f._slot.x - f.root.x) * 0.1; f.baseY += (f._slot.y - f.baseY) * 0.1; }
           f.root.y = f.baseY + Math.sin(t * 1.2 + f.ph) * 4;
           f._wave(t);
         }
-        this._gatherT += dt;
-        const cd = 3 - Math.floor(this._gatherT / 55);
+        const remain = this._gatherHoldSec - (performance.now() - this._holdStart) / 1000;
+        // 角落剩餘秒數（最後 3 秒交給大字倒數）
+        setGInfo(remain > 3 ? '📸 拍照中 ' + Math.ceil(remain) + ' 秒' : '');
+        // 最後 3 秒倒數 3→2→1（半透明），數完即散，不顯示相機
+        const cd = remain > 0 ? Math.min(3, Math.ceil(remain)) : 0;
         if (cd !== this._lastCd) {
           this._lastCd = cd;
-          if (cd > 0) showBanner('📸 ' + cd);
-          else if (cd === 0) showBanner('📸 ✨');
+          if (cd > 0 && remain <= 3.05) { setCountdown(String(cd)); Sound.nibble(); }
+          else if (cd === 0) setCountdown('');
         }
-        if (this._gatherT >= 3 * 55 + 70) this._finishGather();
+        if (remain <= 0) this._finishGather();
       }
     },
 
@@ -564,8 +627,8 @@
 
     // ---- 寶寶魚（媽媽縮小版，輕量 Sprite）----
     babies: new Set(),
-    BABY_CAP: 40,        // 全場上限（輕量 sprite，效能安全）
-    BABY_PER_MOM: 8,     // 單隻媽媽最多帶幾隻
+    BABY_CAP: 8,         // 全場上限
+    BABY_PER_MOM: 2,     // 單隻媽媽最多帶幾隻
     spawnBaby(mother) {
       if (this.babies.size >= this.BABY_CAP) return false;
       if (!mother || mother.root.destroyed) return false;
@@ -623,6 +686,31 @@
     },
   };
 
+  // ---- 大合照倒數（獨立大字，置中，不走橫幅佇列）----
+  const cdEl = document.createElement('div');
+  cdEl.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;' +
+    'z-index:40;pointer-events:none;font-family:"PingFang TC",sans-serif;font-weight:900;' +
+    'font-size:22vmin;color:#fff;text-shadow:0 4px 40px rgba(0,200,255,.9);opacity:0;' +
+    'transition:opacity .15s,transform .15s;transform:scale(.6)';
+  document.body.appendChild(cdEl);
+  // 合照進行中：角落顯示剩餘秒數（長秒數時不會「不知還要等多久」）
+  const gInfoEl = document.createElement('div');
+  gInfoEl.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:39;' +
+    'pointer-events:none;font-family:"PingFang TC",sans-serif;font-size:26px;font-weight:700;color:#fff;' +
+    'background:rgba(8,40,80,.5);padding:6px 22px;border-radius:30px;opacity:0;transition:opacity .2s';
+  document.body.appendChild(gInfoEl);
+  function setGInfo(txt) { gInfoEl.textContent = txt || ''; gInfoEl.style.opacity = txt ? '1' : '0'; }
+  function setCountdown(txt) {
+    if (txt) {
+      cdEl.textContent = txt;
+      cdEl.style.opacity = '0.5';   // 半透明，不擋畫面
+      cdEl.style.transform = 'scale(1)';
+    } else {
+      cdEl.style.opacity = '0';
+      cdEl.style.transform = 'scale(.6)';
+    }
+  }
+
   // ---- 名字橫幅（依序顯示）----
   const bannerEl = document.getElementById('banner');
   const bannerQ = [];
@@ -649,6 +737,7 @@
     config = { ...config, ...c };
     pausedEl.style.display = config.paused ? 'flex' : 'none';
     seaweed.container.visible = !!config.fgDecor;
+    fishLayerFar.filters = (config.farBlur ?? true) ? farBlurFilter : [];
     // 前景遮蔽區（水草叢位置）：魚游進去會放慢 = 躲藏感
     Fish.hideZones = config.fgDecor ? [
       { x: W * 0.095, r: W * 0.085, yMin: H * 0.45 },
@@ -702,7 +791,8 @@
         Sound.scatter();
       }
       else if (m.type === 'parade') fishMgr.startParadeLine();
-      else if (m.type === 'gather') fishMgr.startGather();
+      else if (m.type === 'gather') fishMgr.startGather(m.batch, m.holdSec);
+      else if (m.type === 'gather:skip') { if (fishMgr.parading === 'gather') fishMgr._finishGather(); }
       else if (m.type === 'babies') fishMgr.spawnBabiesRandom();
     };
     ws.onclose = () => setTimeout(connectWS, 2000);   // 自動重連
@@ -808,6 +898,9 @@
     bubbles.update(t, dt);
     rays.update(t);
     motes.update(t, dt);
+    updateDayCycle(t);
+    dayOverlay.width = W; dayOverlay.height = H;
+    drawShadows();
     noiseSprite.x = Math.sin(t * 0.3) * 60 + t * 8;
     noiseSprite.y = Math.cos(t * 0.23) * 50;
     disp.scale.x = 10 + Math.sin(t * 0.5) * 4;

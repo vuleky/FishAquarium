@@ -161,6 +161,29 @@
 - 2026-06-13：PC 端再測 robocopy 顯示來源/目標被黏在一起（`app_files" C:\Users\Ben\...`），根因是 robocopy 對 quoted path 結尾反斜線解析不穩。Windows 啟動檔改為 `HERE`、`ROOT`、`SOURCE_ROOT`、`CACHE_ROOT` 全部不以 `\` 結尾；robocopy 使用 `robocopy "%SOURCE_ROOT%" "%CACHE_ROOT%" ...`。
 - 2026-06-13：PC 端回報英文 ZIP + robocopy 無尾斜線版啟動成功。啟動體驗調整：Mac/Windows 啟動檔改為自動開入口頁 `http://localhost:3000/`，不再直接開 `/display/`；入口頁改成三個明顯卡片入口（投影水族箱、管理台、上傳 QR），移除手機自動跳 `/upload/`，並移除首頁 Google Fonts CDN 依賴以維持離線可用。
 
+- 2026-06-13：寶寶數量回調 BABY_CAP=8 / BABY_PER_MOM=2（spawnBabiesRandom 本就每隻 1~2）。
+- 2026-06-13：畢業巡游改版 — 按下瞬間清空場上魚（直接 destroy，非游出）→ 全部依 3 行（Y=0.26/0.50/0.74·H）從右側盡頭外排隊（x=W+0.12W+col·0.22W），dir/_exitDir=-1 往左齊速游過 → 全離場後 resync。fish.js exit+_parade 走直線（跳過 homeY 回歸與漂移，保持三行整齊）。語法 ✓ 端點 ✓ 版面邏輯 ✓。
+
+- 2026-06-13：巡游「只出 2 隻」根因 = 瀏覽器快取舊 aquarium.js（碟上碼正確、伺服器 12 隻可見）。修：display/index.html 五支 JS 加 ?v=20260613b；server static 對 .html/.js 設 Cache-Control: no-store + etag:false（之後改檔免再 bump 版本）。使用者需硬重整一次（Cmd+Shift+R / Ctrl+F5）清掉舊快取。
+
+- 2026-06-13：大合照倒數與魚動作脫鉤修復。根因：倒數用 showBanner（每則顯示 3.5s + 佇列），跟每秒倒數對不上 → 魚 3.9s 後散開時橫幅還卡在「3」。修：新增獨立置中大字倒數元件 setCountdown（不走橫幅佇列），hold 階段每 60 幀一格 3→2→1→📸（各 1 秒，配 nibble/splash 音），魚定住排好撐到第 4 秒（📸 後）才 _finishGather 散開；結束清倒數。JS 版本號 bump 至 v=20260613c。
+
+- 2026-06-13（/ponytail 三案）：
+  - P1 改標題：入口頁 h1+歡迎語、四頁 <title> → 「民族國小美術班專屬水族箱」。CLAUDE.md/路徑 MiaSchoolFishtank 不動。
+  - P2 去背改選用：processFish(buf, {strength, removeBg})，removeBg 預設關（只裁邊縮圖轉 PNG）；已透明 PNG 仍直通。上傳頁 step2 主鈕「🌊 直接送出」(removeBg=false, PNG)，下方小連結「需要才去背預覽 →」走原 preview。/api/fish 收 removeBg；/api/fish/preview 恆去背。自檢 `node server/fishProcess.js`：白底不去背=0%透明、去背=31.7%、已透明直通，全綠。
+  - P3 大合照修復+批次：根因確認（startGather async 先設 parading→await spawn 期間 ticker 跑 _gatherTick、魚無 _slot→settled 即真→提早 hold）。修：spawn+_assignSlots 全完成後**最後**才設 parading；hold 改 performance.now() 牆上時鐘倒數（最後 3 秒 3-2-1-📸）；魚定住到結束才 _finishGather（會 resync 恢復全部輪替）。批次：依 createdAt 排序 A=前半/B=後半/all；POST /api/gather {batch,holdSec}、/api/gather/skip 強制散開。admin 加批次鈕＋拍照秒數滑桿(4~15,預設8)＋開始＋下一批。JS 版本 bump v=20260613d。
+  - 跳過：config.gatherHoldSec/gatherBatch 未存（admin 客端帶值即可，YAGNI）。需要記憶上次設定再加。
+
+- 2026-06-13（ponytail 微調）：大合照拍照秒數滑桿 4~15→4~300（5 分鐘），server clamp 15→300；倒數大字改半透明 opacity 0.5、移除最後相機 📸（remain≤0 直接散）；名字標籤防擋——巡游 alpha 0.8、合照標籤改疊在自己魚身上(anchor 0.5,0.5 / y=texH*0.32 / alpha 0.78)只蓋自己不擋隔壁。JS bump v=20260613e。
+
+- 2026-06-13（ponytail）：(1) 合照 hold 角落顯示「📸 拍照中 N 秒」（remain>3 才顯示，最後 3 秒交給大字倒數），_finishGather 清除。(2) 前景上傳改用 sharp 讀背景 metadata、resize fit:fill 拉成背景完全相同尺寸 → 投影端 coverFit 兩者一致自動對齊（前景來源尺寸不必相同）。驗證 fg 500×1200→1600×900。JS bump v=20260613f。
+
+- 2026-06-13（質感三項，ponytail）：
+  - 晨昏→深夜循環：dayOverlay 全場色調 Sprite(Texture.WHITE) tint+alpha lerp 過 DAY_PHASES[晨/午/昏/夜]，config.dayCycleSec 一輪秒數(0=關)，admin 滑桿 0~600。ponytail：純色 overlay 做氛圍；真正魚輪廓螢光需 per-fish glow filter，量大再加。
+  - 沙地柔影：單一 shadowGfx Graphics 每幀 clear+畫每隻 active 魚底部橢圓(floorY=H*0.9, alpha .16)。
+  - 遠景模糊：新增 fishLayerFar 容器共用一個 BlurFilter(strength 3)，spawn 時 depth<0.35 進此層 → 景深。巡游/合照仍用 sharp fishLayer。
+  - pixi v8 API 已對型別（BlurFilter strength / Texture.WHITE / Graphics.ellipse().fill）。JS bump v=20260613g。Chrome MCP 無法 eval，runtime 待硬重整投影頁實看。
+
 ## Backlog：家族餵魚系統（活動後再做，使用者已提需求）
 
 - 分組：4~5 學生一「家族」，魚以家族為單位（fish.familyId）
