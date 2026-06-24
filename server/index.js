@@ -270,12 +270,12 @@ function lanIP() {
   return 'localhost';
 }
 
-//server.listen(PORT, () => {
-//  console.log('');
-//  console.log('🐟 水族箱投影系統啟動！');
-//  console.log(`   入口頁   http://localhost:${PORT}/       （先選投影、上傳或管理台）`);
-//  console.log(`   投影頁   http://localhost:${PORT}/display/   （按 F11 全螢幕）`);
-//  console.log(`   控制台   http://localhost:${PORT}/admin/`);
-//  console.log(`   手機上傳 http://${lanIP()}:${PORT}/upload/   （或掃控制台的 QR Code）`);
-//  console.log('');
-//});
+server.listen(PORT, () => {
+  console.log('');
+  console.log('🐟 水族箱投影系統啟動！');
+  console.log(`   入口頁   http://localhost:${PORT}/       （先選投影、上傳或管理台）`);
+  console.log(`   投影頁   http://localhost:${PORT}/display/   （按 F11 全螢幕）`);
+  console.log(`   控制台   http://localhost:${PORT}/admin/`);
+  console.log(`   手機上傳 http://${lanIP()}:${PORT}/upload/   （或掃控制台的 QR Code）`);
+  console.log('');
+});
