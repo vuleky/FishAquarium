@@ -68,6 +68,19 @@
 - Windows 啟動檔會先把程式複製到 `%LOCALAPPDATA%\MiaSchoolFishtank\app` 再執行，避免在 Google Drive、USB、網路磁碟或中文雲端路徑裡安裝 `node_modules` 造成套件損壞。活動資料會存在這個本機資料夾。
 - 如果 Windows 顯示 `Cannot find app_files\package.json`，通常是使用者只複製了 `start-windows.bat`，或解壓後移動了檔案。請重新解壓整包 ZIP，保持 `start-windows.bat` 與 `app_files` 在同一層。
 
+## Railway 部署：更版不洗掉魚/背景（重要）
+
+Railway 預設檔案系統是「暫時的」，每次 deploy 會清空 → 魚和背景不見。
+解法：掛一顆 **Volume（持久磁碟）**，讓資料存在它裡面。
+
+1. Railway 專案 → 該服務 → **Variables** → 新增
+   `DATA_DIR = /data`
+2. 同服務 → **Settings → Volumes** → **New Volume**，Mount path 填 `/data`
+3. Redeploy。之後上傳的魚/背景都存在 Volume，更版不會洗掉。
+
+（程式已支援：`server/state.js` 讀 `process.env.DATA_DIR`，沒設就用本機 `data/`。）
+⚠️ 已存在 Railway 舊環境的魚（在暫時磁碟上）救不回，掛 Volume 後重新上傳。
+
 ## 分享給遠端朋友測試（活動前）
 
 ### 固定網址（推薦，免費 ngrok 帳號）

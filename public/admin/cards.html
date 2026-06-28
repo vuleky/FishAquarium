@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<title>家族 QR 卡（列印）</title>
+<style>
+  body { font-family: "PingFang TC", sans-serif; margin: 0; padding: 16px; }
+  .toolbar { text-align: center; margin-bottom: 12px; }
+  .toolbar button { font-size: 16px; padding: 10px 20px; cursor: pointer; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .card { border: 1px dashed #999; border-radius: 10px; padding: 12px; text-align: center; page-break-inside: avoid; }
+  .card h2 { margin: 0 0 6px; font-size: 18px; }
+  .card img { width: 180px; height: 180px; }
+  .card .url { font-size: 10px; color: #555; word-break: break-all; }
+  @media print { .toolbar { display: none; } .card { border-color: #ccc; } }
+</style>
+</head>
+<body>
+<div class="toolbar"><button onclick="print()">🖨 列印 / 存成 PDF</button>　掃 QR 直接進該家上傳頁</div>
+<div class="grid" id="grid">載入中…</div>
+<script>
+(async () => {
+  const fams = await (await fetch('/api/families')).json();
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  for (const fam of fams) {
+    const r = await (await fetch('/api/families/' + fam.id + '/qr')).json();
+    const d = document.createElement('div');
+    d.className = 'card';
+    d.innerHTML = `<h2>${fam.name}</h2><img src="${r.dataUrl}"><div class="url">掃我，上傳你家的魚 🐟</div>`;
+    grid.appendChild(d);
+  }
+})();
+</script>
+</body>
+</html>

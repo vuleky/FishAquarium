@@ -187,8 +187,6 @@
         <span class="ico">⏭</span><span class="lbl">換背景</span><span class="sub">立刻切下一張</span></button>
       <button class="act ghost" onclick="api('POST','/api/babies')">
         <span class="ico">🐣</span><span class="lbl">生寶寶</span><span class="sub">隨機魚生小魚跟游</span></button>
-      <button class="act ghost" onclick="parade()">
-        <span class="ico">🎓</span><span class="lbl">畢業巡游</span><span class="sub">列隊游過謝幕</span></button>
     </div>
     <div class="sub-cap">📸 大合照（集合方陣＋名字＋倒數）</div>
     <div class="set">
@@ -205,8 +203,13 @@
     </div>
     <div class="actions" style="grid-template-columns:1fr 1fr;gap:8px">
       <button class="act gold" onclick="gather()"><span class="ico">📸</span><span class="lbl">開始大合照</span></button>
+      <button class="act" style="background:#2ec27e" onclick="api('POST','/api/gather/freeze')"><span class="ico">📷</span><span class="lbl">定格拍照</span><span class="sub">停字、魚不動</span></button>
       <button class="act ghost" onclick="api('POST','/api/gather/skip')"><span class="ico">⏭</span><span class="lbl">下一批 / 散開</span></button>
     </div>
+    <div class="sub-cap">🎓 畢業巡游（魚列隊游過 + 自訂字幕）</div>
+    <input type="text" id="paradeText" maxlength="40" placeholder="自訂字幕（留空用預設：畢業巡游！謝謝每一位小畫家）"
+      style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--card-2);color:var(--ink);margin-bottom:8px">
+    <button class="act gold" style="width:100%" onclick="parade()"><span class="ico">🎓</span><span class="lbl">開始畢業巡游</span></button>
     <div class="sub-cap">🍤 餵食（撒飼料、魚會搶食變大）</div>
     <div class="actions" style="grid-template-columns:1fr 1fr 1fr">
       <button class="act gold" onclick="feed('pellets')">
@@ -292,6 +295,15 @@
       <span class="set-label">遠景模糊<span class="tip">遠的魚帶輕微模糊 = 景深感</span></span>
       <label class="switch"><input type="checkbox" id="farBlur"><span class="track"></span></label>
     </div>
+    <div class="sub-cap">🎯 投影校正（亮相/合照不在正中央時微調）</div>
+    <div class="set">
+      <div class="set-top"><span class="set-label">中心 左右</span><span class="set-val" id="v_centerX"></span></div>
+      <input type="range" id="centerX" min="0.3" max="0.7" step="0.01">
+    </div>
+    <div class="set">
+      <div class="set-top"><span class="set-label">中心 上下</span><span class="set-val" id="v_centerY"></span></div>
+      <input type="range" id="centerY" min="0.3" max="0.7" step="0.01">
+    </div>
 
     <div class="sub-cap">聲音</div>
     <div class="switch-row">
@@ -307,12 +319,20 @@
   <!-- 背景圖 -->
   <div class="card" style="grid-column: 1 / -1;">
     <h2>🖼 背景圖庫</h2>
-    <p class="hint">上傳的背景會自動輪播。每張可加一張「前景 PNG」（去背的水草/岩石/珊瑚），會蓋在魚前面 → 立體感。</p>
+    <p class="hint">上傳的背景會自動輪播。每張可加一張「前景 PNG」（去背、透明底的水草/岩石/珊瑚），會蓋在魚前面 → 立體感。前景會自動拉成跟背景一樣大、自動對齊，不用調尺寸。</p>
     <button class="big" style="padding:11px 18px;font-size:15px;margin-bottom:14px"
       onclick="document.getElementById('bgFile').click()">⬆️ 上傳背景圖</button>
     <input type="file" id="bgFile" accept="image/*" hidden multiple>
     <input type="file" id="fgFile" accept="image/png,image/webp" hidden>
     <div class="thumbs" id="bgList"></div>
+  </div>
+
+  <!-- 家族 -->
+  <div class="card" style="grid-column: 1 / -1;">
+    <h2>🏠 家族（<span id="famCount">—</span> 家・一家一魚）</h2>
+    <p class="hint">每家一隻魚，新上傳會覆蓋舊的（舊的存進歷史可還原）。點名字可改名。掃各家專屬 QR 進該家上傳頁。</p>
+    <button class="big" style="margin-bottom:12px" onclick="window.open('cards.html','_blank')">🖨 列印 26 張家族 QR 卡</button>
+    <div id="familyList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px"></div>
   </div>
 
   <!-- 魚清單 -->
@@ -358,6 +378,7 @@ function fmt(k, v) {
   switch (k) {
     case 'autoSpotlightSec': return v === 0 ? '關閉' : v + ' 秒';
     case 'dayCycleSec': return v === 0 ? '關閉' : v + ' 秒';
+    case 'centerX': case 'centerY': return Math.round(v * 100) + '%';
     case 'bgIntervalSec':
     case 'fishOnScreenSec': return v + ' 秒';
     case 'maxFishOnScreen': return v + ' 隻';
@@ -378,7 +399,7 @@ function fillTrack(el) {
 }
 
 const sliders = ['bgIntervalSec', 'maxFishOnScreen', 'fishSize', 'fishOnScreenSec', 'swimSpeed', 'volume',
-  'bgBrightness', 'bgContrast', 'bgMotion', 'autoSpotlightSec', 'dayCycleSec'];
+  'bgBrightness', 'bgContrast', 'bgMotion', 'autoSpotlightSec', 'dayCycleSec', 'centerX', 'centerY'];
 for (const k of sliders) {
   $(k).addEventListener('input', () => { $('v_' + k).textContent = fmt(k, $(k).value); fillTrack($(k)); });
   $(k).addEventListener('change', () => api('PATCH', '/api/config', { [k]: +$(k).value }));
@@ -402,7 +423,7 @@ function togglePause() { api('PATCH', '/api/config', { paused: !cfg.paused }); }
 function feed(foodType) { api('POST', '/api/feed', { foodType }); }
 function parade() {
   if (confirm('開始畢業巡游？全部的魚會列隊游過畫面（依魚數約 1~2 分鐘），結束後自動恢復正常。')) {
-    api('POST', '/api/parade');
+    api('POST', '/api/parade', { text: $('paradeText').value });
   }
 }
 let gBatch = 'all';
@@ -437,7 +458,7 @@ function renderFish(list) {
       </div>
       <div class="fish-body">
         <div class="fish-name" onclick="renameFish('${f.id}')">
-          ${esc(f.name) || '（沒有名字）'} <span class="pen">✎</span></div>
+          <span style="color:#8fb0cc">#${f.num || '?'}</span>&nbsp;${esc(f.name) || '（沒有名字）'} <span class="pen">✎</span></div>
         <button class="fish-primary" onclick="api('POST','/api/fish/${f.id}/feature')">⭐ 游到中央亮相</button>
         <div class="stepper">
           <span class="st-lbl">大小</span>
@@ -496,11 +517,14 @@ function renameFish(id) {
 function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
 // ---- 背景 ----
+let bgAdj = {};
 function renderBgs(list) {
   $('bgList').innerHTML = '';
   for (const b of list) {
+    if (b.fg) bgAdj[b.file] = { ...(b.fgAdj || { x: 0, y: 0, scale: 1 }) };
     const d = document.createElement('div');
     d.className = 'thumb';
+    const a = b.fgAdj || { x: 0, y: 0, scale: 1 };
     d.innerHTML = `
       <img src="/data/backgrounds/${b.file}" loading="lazy">
       <div class="fgtag">${b.fg ? '🌿 已加前景' : ''}</div>
@@ -509,10 +533,32 @@ function renderBgs(list) {
           onclick="pickFg('${b.file}')">🌿 ${b.fg ? '換' : '加'}前景</button>
         ${b.fg ? `<button class="ghost" title="移除前景" onclick="delFg('${b.file}')">✕</button>` : ''}
         <button class="warn" title="刪除這張背景" onclick="delBg('${b.file}')">🗑</button>
-      </div>`;
+      </div>
+      ${b.fg ? `<div class="fgalign" style="margin-top:6px;font-size:11px;color:var(--ink-dim)">
+        前景對位（先讓這張在投影上顯示）
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin-top:3px">
+          <span></span><button class="ghost" onclick="fgAdj('${b.file}',{dy:-0.02})">▲</button><span></span>
+          <button class="ghost" onclick="fgAdj('${b.file}',{dx:-0.02})">◀</button>
+          <button class="ghost" onclick="fgAdj('${b.file}',{reset:1})" title="歸零">⟲</button>
+          <button class="ghost" onclick="fgAdj('${b.file}',{dx:0.02})">▶</button>
+          <button class="ghost" onclick="fgAdj('${b.file}',{ds:-0.05})">－</button>
+          <button class="ghost" onclick="fgAdj('${b.file}',{dy:0.02})">▼</button>
+          <button class="ghost" onclick="fgAdj('${b.file}',{ds:0.05})">＋</button>
+        </div></div>` : ''}`;
+    d.dataset.adj = JSON.stringify(a);
     $('bgList').appendChild(d);
   }
   if (!list.length) $('bgList').innerHTML = '<div style="color:#5e7c97">尚無背景圖，投影會用內建深海背景</div>';
+}
+// 前景對位：累加位移/縮放，PATCH 後投影即時套用
+function fgAdj(file, d) {
+  const a = bgAdj[file] || { x: 0, y: 0, scale: 1 };
+  if (d.reset) { a.x = 0; a.y = 0; a.scale = 1; }
+  if (d.dx) a.x = Math.max(-0.5, Math.min(0.5, a.x + d.dx));
+  if (d.dy) a.y = Math.max(-0.5, Math.min(0.5, a.y + d.dy));
+  if (d.ds) a.scale = Math.max(0.5, Math.min(2, a.scale + d.ds));
+  bgAdj[file] = a;
+  api('PATCH', `/api/backgrounds/${encodeURIComponent(file)}/fg-adjust`, a);
 }
 let fgTarget = null;
 function pickFg(file) { fgTarget = file; $('fgFile').click(); }
@@ -524,18 +570,38 @@ function delBg(f) {
 }
 $('bgFile').addEventListener('change', async (e) => {
   for (const f of e.target.files) {
-    const fd = new FormData();
-    fd.append('image', f);
-    await fetch('/api/backgrounds', { method: 'POST', body: fd });
+    try {
+      const png = await toPng(f);   // 轉檔：支援 iPhone HEIC、避開伺服器解碼問題
+      const fd = new FormData();
+      fd.append('image', png, 'bg.png');
+      await fetch('/api/backgrounds', { method: 'POST', body: fd });
+    } catch (err) { alert(err.message); }
   }
   e.target.value = '';
 });
+// 前景：客戶端轉 PNG（保住 iPhone 去背透明、避開伺服器無法解 HEIC）
+function toPng(file) {
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = im.naturalWidth; c.height = im.naturalHeight;
+      c.getContext('2d').drawImage(im, 0, 0);
+      c.toBlob(b => b ? res(b) : rej(new Error('轉檔失敗')), 'image/png');
+    };
+    im.onerror = () => rej(new Error('這張圖瀏覽器打不開（HEIC 請用 iPhone/iPad 上傳，或先存成 PNG）'));
+    im.src = URL.createObjectURL(file);
+  });
+}
 $('fgFile').addEventListener('change', async (e) => {
   const f = e.target.files[0];
   if (f && fgTarget) {
-    const fd = new FormData();
-    fd.append('image', f);
-    await fetch(`/api/backgrounds/${encodeURIComponent(fgTarget)}/foreground`, { method: 'POST', body: fd });
+    try {
+      const png = await toPng(f);
+      const fd = new FormData();
+      fd.append('image', png, 'fg.png');
+      await fetch(`/api/backgrounds/${encodeURIComponent(fgTarget)}/foreground`, { method: 'POST', body: fd });
+    } catch (err) { alert(err.message); }
   }
   e.target.value = ''; fgTarget = null;
 });
@@ -556,6 +622,52 @@ async function loadAll() {
   lastFish = s.fish;
   renderFish(s.fish);
   renderBgs(s.backgrounds);
+  renderFamilies(s.families || []);
+}
+function renderFamilies(fams) {
+  const box = $('familyList');
+  box.innerHTML = '';
+  $('famCount').textContent = fams.length;
+  for (const fam of fams) {
+    const d = document.createElement('div');
+    d.style.cssText = 'background:var(--card-2);border:1px solid var(--line);border-radius:10px;padding:8px;text-align:center';
+    const cur = fam.current
+      ? `<img src="/data/fish/${fam.current.file}?v=${fam.current.v || 0}" style="width:100%;height:56px;object-fit:contain">`
+      : '<div style="height:56px;line-height:56px;color:#5e7c97;font-size:12px">尚無魚</div>';
+    d.innerHTML = `
+      ${cur}
+      <div style="font-size:13px;font-weight:700;cursor:pointer" onclick="renameFamily(${fam.id})" title="改名">#${fam.id} ${esc(fam.name)} ✎</div>
+      <div class="ops" style="margin-top:4px;justify-content:center">
+        <button class="ghost" style="padding:5px 8px;font-size:12px" onclick="showHistory(${fam.id})">📜${fam.historyCount}</button>
+        <button class="ghost" style="padding:5px 8px;font-size:12px" onclick="famQR(${fam.id},'${esc(fam.name)}')">🔗QR</button>
+        ${fam.current ? `<button class="warn" style="padding:5px 8px;font-size:12px" onclick="delFish('${fam.current.id}')">🗑</button>` : ''}
+      </div>
+      <div id="hist${fam.id}"></div>`;
+    box.appendChild(d);
+  }
+}
+async function renameFamily(id) {
+  const name = prompt('家族名字：');
+  if (name && name.trim()) await api('PATCH', '/api/families/' + id, { name: name.trim() });
+}
+async function showHistory(id) {
+  const el = $('hist' + id);
+  if (el.innerHTML) { el.innerHTML = ''; return; }
+  const hist = await api('GET', '/api/families/' + id + '/history');
+  el.innerHTML = hist.map(f => `<div style="margin-top:4px">
+    <img src="/data/fish/${f.file}?v=${f.v || 0}" style="height:40px;background:#fff8;border-radius:4px">
+    ${f.archived ? `<button class="ghost" style="padding:3px 6px;font-size:11px" onclick="restore('${f.id}')">還原</button>` : '<span style="color:#6ee7a8;font-size:11px">目前</span>'}
+    <button class="warn" style="padding:3px 6px;font-size:11px" onclick="delFish('${f.id}')">🗑</button>
+  </div>`).join('') || '<div style="font-size:11px;color:#5e7c97">無歷史</div>';
+}
+async function restore(id) {
+  if (confirm('把這隻設回該家族的當前魚？')) { await api('POST', '/api/fish/' + id + '/restore'); }
+}
+async function famQR(id, name) {
+  const r = await api('GET', '/api/families/' + id + '/qr');
+  const w = window.open('', '_blank');
+  w.document.write(`<body style="text-align:center;font-family:sans-serif"><h2>${name}</h2>
+    <img src="${r.dataUrl}" style="width:300px"><p style="color:#888">掃我，上傳你家的魚</p></body>`);
 }
 function connectWS() {
   const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
@@ -564,7 +676,8 @@ function connectWS() {
   ws.onmessage = (ev) => {
     const m = JSON.parse(ev.data);
     if (m.type === 'config') applyCfg(m.config);
-    else if (m.type.startsWith('fish:') || m.type === 'backgrounds') loadAll();
+    else if (m.type.startsWith('fish:') || m.type === 'backgrounds'
+             || m.type === 'families' || m.type === 'refresh') loadAll();
   };
 }
 loadAll(); loadQR(); connectWS();

@@ -184,6 +184,53 @@
   - 遠景模糊：新增 fishLayerFar 容器共用一個 BlurFilter(strength 3)，spawn 時 depth<0.35 進此層 → 景深。巡游/合照仍用 sharp fishLayer。
   - pixi v8 API 已對型別（BlurFilter strength / Texture.WHITE / Graphics.ellipse().fill）。JS bump v=20260613g。Chrome MCP 無法 eval，runtime 待硬重整投影頁實看。
 
+- 2026-06-24（ponytail 五項）：
+  1. 一隻一隻拍照：state addFish 加遞增 num（load 補舊魚）、admin 卡片顯示 #num、現場控制加「拍照點名」◀目前▶ 走 visible 依 num 排序逐隻 feature。
+  2. 去背防呆：上傳 step2 改成依「手上是什麼」二選一——「✏️紙上畫的→自動去白底(推薦,走預覽)」/「🩹已去好背→直接放」。
+  3. 前景防呆：admin hint 補「透明底 PNG、自動拉成背景尺寸自動對齊」。
+  4. Railway 更版洗資料：state.js DATA_DIR = process.env.DATA_DIR || 本機；掛 Volume 至 /data + env DATA_DIR=/data（RUNBOOK 已寫步驟）。資料不該進 git。
+  5. 投影中心偏掉：fish.w/h 改每幀同步 live W/H（修 fullscreen 後 stale）；加 config.centerX/centerY 校正(admin 滑桿 0.3~0.7)，feature 與 gather 方陣中心都吃 Fish.center/config。
+  驗證：全檔語法 ✓、fishProcess 自檢 ✓、DATA_DIR override ✓、num=18 ✓、centerX patch ✓。JS bump v=20260613i。
+  → skipped: 拍照點名做成投影端大編號字幕（admin 端 stepper 已夠），add when 要投影顯示編號。
+
+- 2026-06-24（ponytail 巡游/合照四項）：
+  1. 巡游自由文字：admin paradeText 輸入框 → POST /api/parade {text} → showBanner(text||預設)。
+  2. 巡游只出 2 隻 bug 修：startParadeLine 把 parading='line' 移到「全部 await 生完之後」（原本先設旗標→await 載入期間 ticker 已把早生的魚游出畫面）。
+  3. 大合照定格：新增 freeze 階段 + freezeGather()（清倒數/秒數文字、魚原地不動只極輕微擺尾、不自動散、等 skip 取消）。/api/gather/freeze、WS gather:freeze、admin「📷 定格拍照」綠鈕。
+  4. 取消模糊：feature(onFeature) 與大合照(startGather spawn 後) 把魚 root 移到清晰 fishLayer；巡游本來就用 fishLayer。
+  驗證：全檔語法 ✓、端點 parade+text/freeze/skip ✓。JS bump v=20260613j。
+  → skipped: 巡游進場字＋結尾字兩格（給一格），freeze 死靜（留極輕微擺尾較自然）。
+
+- 2026-06-24（ADR-001 家族架構，階段 1~3；無 PIN、無年級）：
+  - 模型：state.families 預建 26 家（第N家，可改名）；fish 加 familyId/archived。一家一魚 upsert：addFish 有 familyId → 舊當前魚 archived（檔案保留），num=familyId。listFish 只回 !archived（投影只看當前），listAllFish 給歷史。
+  - 身分裝置無關：上傳頁吃 ?family=N（鎖定顯示家族名）或無參數時下拉選家族（管理員代傳/共用 iPad）；送出前顯示「目前這隻會被換掉」縮圖；familyId 隨上傳。名字有家族時可省略（用家族名）。
+  - server：/api/state 加 families；/api/families(GET)、PATCH 改名、:id/history、:id/qr（?family= 專屬 QR）；/api/fish/:id/restore 還原歷史；upload 帶 familyId + 舊魚 broadcast fish:remove；WS refresh。
+  - admin：家族卡（26 格：當前縮圖/改名/📜歷史+還原/🔗QR）；cards.html 列印 26 張家族 QR。display WS refresh→loadState。
+  - 驗證：26 家 ✓、upsert 覆蓋進歷史 ✓、投影只 1 隻 ✓、還原切換 ✓、family QR url ✓。JS bump v=20260613k。
+  - 待辦（階段 4，活動後）：家族專屬「餵我的魚/呼叫我的魚」吃 familyId、餵前先叫魚上場。
+  - 風險：拿到 ?family=N 即可覆蓋該家魚（校內信任環境，靠歷史還原兜底，未加 PIN 為使用者決定）。
+
+- 2026-06-26（ponytail）：
+  - 畢業巡演改 A 跑馬燈：刪除三行游動巡游全部碼（startParadeLine/_spawnParade/_paradeTick/paradeFish/parading==='line'），改 runCredits(text)——DOM 字幕由右往左捲（title+全部魚名），魚照常游不動魚邏輯（=不會再壞）。WS parade→runCredits。刪 admin「拍照點名」（與亮相雷同）。
+  - 家族名：官方檔 115年家族清單_20260626.xlsx 解析出 27 家（序號欄打錯出現兩個 26，家族名實為 27 不重複畫家）。經使用者確認 27。state FAMILY_NAMES 官方名、FAMILY_COUNT=27；load 對「第N家」預設名才覆蓋（不動手改過的）。
+  - 驗證：27 家 + 名稱 ✓、parade 端點 ✓、零殘留舊巡游引用。JS bump v=20260613l。
+  - 檔案其他可用處（未做，建議）：每家 3 名成員姓名也在檔內 → 可做「家族成員名牌/合照時顯示成員」「報到清單」，活動後再說。
+
+- 2026-06-26（ponytail 六項）：
+  1. 家族名加「家族」後綴：state 種子 official=bare+' 家族'，migration 對「第N家」或舊裸名才覆蓋。
+  2. 家族 QR 上傳頁只顯示當前魚一顆「找 xx」鈕（renderMyFish 家族模式讀 family.current，不用 localStorage 列表）；上傳成功 initFamily() 刷新。
+  3. 不寫死數量：admin h2 famCount 動態（=families.length，現 27）。
+  4. iPhone HEIC 去背黑底根因＝上傳裁切輸出 JPEG 壓掉透明 + 這台 sharp 不能解 HEIC。修：cropToBlob 一律 PNG；admin 前景/背景上傳改 client canvas→PNG（保 alpha、避開 server HEIC）。驗證透明 PNG 直送 removeBg=false 透明保 32%。
+  5. 刪某家族魚：admin 家族卡 current 🗑、📜歷史每隻 🗑、魚清單 🗑。
+  6. QR 頁（cards.html + famQR popup）拿掉網址文字，改「掃我，上傳你家的魚」。
+  JS bump v=20260613m。
+  - 提醒：docs/*.xlsx 含學生姓名(個資)未進 git 排除 → 建議加 .gitignore。
+
+- 2026-06-27（ponytail）：
+  - 全螢幕後海草浮空/背景比例跑掉：根因＝Seaweed 等氛圍物建構時用當下 W/H 定位，resize 不重建。修：window resize debounce 350ms → location.reload()（投影一次性設定，重載最穩；升級路徑=各 effect relayout(W,H)）。
+  - 前景對位（上下左右+縮放）：state.fgAdjust{file:{x,y,scale}}、listBackgrounds 帶 fgAdj、setFgAdjust(clamp x/y±0.5, scale 0.5~2)；PATCH /api/backgrounds/:file/fg-adjust 廣播 backgrounds。display fgAdjMap 由 setList 即時更新、Ken Burns 套 offset(W*x,H*y)+scale。admin 每張前景背景下方 ▲▼◀▶＋－⟲ 累加調整、即時投影。驗證 PATCH 持久 ✓。
+  - 確認 HEIC：cropToBlob/前景/背景全 PNG（上輪），透明保 94% ✓。JS bump v=20260613n。
+
 ## Backlog：家族餵魚系統（活動後再做，使用者已提需求）
 
 - 分組：4~5 學生一「家族」，魚以家族為單位（fish.familyId）

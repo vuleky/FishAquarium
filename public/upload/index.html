@@ -72,6 +72,9 @@
 <h1>🐟 上傳你的魚</h1>
 <div class="sub">畫好的魚，馬上游進大螢幕！</div>
 
+<!-- 家族列（有 ?family 鎖定，否則下拉選） -->
+<div id="famBar" style="width:100%;max-width:480px;margin-bottom:14px;text-align:center"></div>
+
 <!-- 步驟 1：選照片 -->
 <div class="step active" id="step1">
   <button class="bigbtn" onclick="document.getElementById('file').click()">📷 拍照 / 選照片</button>
@@ -99,8 +102,9 @@
   <div class="hint">用手指框出「魚」的範圍（可重畫）</div>
   <div id="cropWrap"><canvas id="cropCanvas"></canvas></div>
   <input type="text" id="name" placeholder="🐟 幫魚取個名字（必填）" maxlength="12" required>
-  <button class="bigbtn" id="sendDirectBtn" onclick="directSend()">🌊 直接送出</button>
-  <div class="hint"><a href="#" onclick="makePreview();return false" style="color:#ffd34d">需要才去背預覽 →</a></div>
+  <div class="hint">這張魚是哪一種？</div>
+  <button class="bigbtn" onclick="makePreview()">✏️ 紙上畫的 → 自動去白底（推薦）</button>
+  <button class="bigbtn secondary" id="sendDirectBtn" onclick="directSend()">🩹 已經去好背的 → 直接放</button>
   <button class="bigbtn secondary" onclick="reset()">↩️ 重選照片</button>
   <div id="err"></div>
 </div>
@@ -163,6 +167,36 @@ const $ = (id) => document.getElementById(id);
 let img = null, sel = null, scale = 1;
 const canvas = $('cropCanvas'), ctx = canvas.getContext('2d');
 
+// ---- 家族：?family=N 鎖定，否則下拉選（管理員代傳/共用 iPad）----
+let familyId = new URLSearchParams(location.search).get('family') || '';
+let families = [];
+async function initFamily() {
+  families = await (await fetch('/api/families')).json();
+  const box = $('famBar');
+  if (familyId) {
+    const fam = families.find(f => f.id === +familyId);
+    box.innerHTML = `<div style="background:rgba(255,211,77,.15);border:2px solid #ffd34d;border-radius:14px;padding:12px">
+      <div style="font-size:20px;font-weight:700;color:#ffd34d">🏠 ${fam ? esc(fam.name) : '第' + familyId + '家'}</div>
+      <div class="hint" id="famCur"></div></div>`;
+  } else {
+    box.innerHTML = `<div class="hint">這隻魚是哪一家的？</div>
+      <select id="famSel" onchange="onFamPick()" style="width:100%;padding:14px;font-size:18px;border-radius:12px;border:none">
+        <option value="">— 請選家族 —</option>
+        ${families.map(f => `<option value="${f.id}">${esc(f.name)}${f.current ? ' （已有魚，會覆蓋）' : ''}</option>`).join('')}
+      </select><div class="hint" id="famCur"></div>`;
+  }
+  showFamCur();
+  renderMyFish();
+}
+function onFamPick() { familyId = $('famSel').value; showFamCur(); renderMyFish(); }
+function showFamCur() {
+  const el = $('famCur'); if (!el) return;
+  const fam = families.find(f => f.id === +familyId);
+  el.innerHTML = (fam && fam.current)
+    ? `⚠️ 目前這隻會被換掉：<br><img src="/data/fish/${fam.current.file}?v=${fam.current.v || 0}" style="height:60px;background:#fff8;border-radius:6px;margin-top:4px">`
+    : '';
+}
+
 function show(id) {
   document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
   $(id).classList.add('active');
@@ -184,6 +218,10 @@ $('file').addEventListener('change', (e) => {
     draw();
     show('step2');
     URL.revokeObjectURL(url);
+  };
+  im.onerror = () => {   // 防呆：這台瀏覽器讀不了（多半是電腦版讀 HEIC）
+    URL.revokeObjectURL(url);
+    alert('這張照片這台裝置打不開 📵\n\n如果是 iPhone 的 HEIC 照片，請改用 iPhone / iPad 上傳，\n或先把照片存成 JPG / PNG 再傳。');
   };
   im.src = url;
   e.target.value = '';
@@ -263,14 +301,14 @@ function cropToBlob(png) {
   out.height = out.width * (h / w);
   const octx = out.getContext('2d');
   octx.drawImage(img, x / scale, y / scale, w / scale, h / scale, 0, 0, out.width, out.height);
-  return png ? new Promise(res => out.toBlob(res, 'image/png'))
-             : new Promise(res => out.toBlob(res, 'image/jpeg', 0.9));
+  // 一律 PNG：保住 iPhone 去背的透明（JPEG 會把透明壓成黑底）
+  return new Promise(res => out.toBlob(res, 'image/png'));
 }
 
 // 直接送出（不去背）：裁切圖 PNG 上傳，removeBg=false
 async function directSend() {
   if (!img) return;
-  if (!$('name').value.trim()) {
+  if (!familyId && !$('name').value.trim()) {
     $('err').textContent = '❌ 請先幫魚取個名字！';
     $('name').focus();
     return;
@@ -285,10 +323,12 @@ async function directSend() {
     fd.append('name', $('name').value.trim());
     fd.append('removeBg', 'false');
     fd.append('headDir', headDir);
+    if (familyId) fd.append('familyId', familyId);
     const r = await fetch('/api/fish', { method: 'POST', body: fd });
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || '上傳失敗');
-    if (j.fish) { saveMy([...getMy(), { id: j.fish.id, name: j.fish.name }]); renderMyFish(); }
+    if (familyId) initFamily(); // 家族模式：刷新「當前魚」按鈕
+    else if (j.fish) { saveMy([...getMy(), { id: j.fish.id, name: j.fish.name }]); renderMyFish(); }
     show('done');
   } catch (e) {
     show('step2');
@@ -311,7 +351,7 @@ async function fetchPreview() {
 
 async function makePreview() {
   if (!img) return;
-  if (!$('name').value.trim()) {
+  if (!familyId && !$('name').value.trim()) {
     $('err').textContent = '❌ 請先幫魚取個名字！';
     $('name').focus();
     return;
@@ -355,6 +395,20 @@ function getMy() { try { return JSON.parse(localStorage.myFish || '[]'); } catch
 function saveMy(a) { localStorage.myFish = JSON.stringify(a.slice(-10)); }
 function renderMyFish() {
   const box = $('myfish');
+  // 家族模式：只顯示這家「當前」那一隻（一家一魚），不列歷史
+  if (familyId) {
+    const fam = families.find(f => f.id === +familyId);
+    const cur = fam && fam.current;
+    box.innerHTML = cur ? '<div class="hint" style="margin-top:18px">⭐ 點一下，你家的魚會游到大螢幕中央！</div>' : '';
+    if (cur) {
+      const b = document.createElement('button');
+      b.className = 'bigbtn secondary';
+      b.textContent = '🔍 找「' + (cur.name || fam.name) + '」';
+      b.onclick = () => callMyFish({ id: cur.id, name: cur.name || fam.name }, b);
+      box.appendChild(b);
+    }
+    return;
+  }
   const list = getMy();
   box.innerHTML = list.length
     ? '<div class="hint" style="margin-top:18px">⭐ 我的魚 — 點一下，牠會游到大螢幕中央！</div>' : '';
@@ -384,7 +438,8 @@ async function callMyFish(f, b) {
     b.disabled = false;
   }, 6000);
 }
-renderMyFish();
+function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+initFamily(); // 載入家族後會 renderMyFish
 
 // 餵魚：撒飼料到投影幕（伺服器 2 秒冷卻）
 async function feed(btn, foodType) {
@@ -436,7 +491,7 @@ async function rotatePreview(dir) {
 
 async function send() {
   if (!previewData) return;
-  if (!$('name').value.trim()) {
+  if (!familyId && !$('name').value.trim()) {
     $('err2').textContent = '❌ 請先幫魚取個名字！';
     return;
   }
@@ -450,11 +505,13 @@ async function send() {
     fd.append('photo', blob, 'fish.png');
     fd.append('name', $('name').value.trim());
     fd.append('headDir', headDir);
+    if (familyId) fd.append('familyId', familyId);
     const r = await fetch('/api/fish', { method: 'POST', body: fd });
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || '上傳失敗');
-    // 記住「這是我的魚」（綁這支手機，之後可呼叫亮相）
-    if (j.fish) {
+    // 家族模式刷新當前魚；否則記住「我的魚」於本機
+    if (familyId) initFamily();
+    else if (j.fish) {
       saveMy([...getMy(), { id: j.fish.id, name: j.fish.name }]);
       renderMyFish();
     }

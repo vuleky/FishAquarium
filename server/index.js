@@ -46,8 +46,27 @@ app.get('/api/state', (req, res) => {
   res.json({
     config: state.getConfig(),
     fish: state.listFish(),
+    families: state.listFamilies(),
     backgrounds: state.listBackgrounds(),
   });
+});
+
+// 家族清單 / 改名 / 歷史
+app.get('/api/families', (req, res) => res.json(state.listFamilies()));
+app.patch('/api/families/:id', (req, res) => {
+  const fam = state.renameFamily(req.params.id, (req.body || {}).name);
+  if (!fam) return res.status(404).json({ error: 'not found' });
+  broadcast({ type: 'families' });
+  res.json(fam);
+});
+app.get('/api/families/:id/history', (req, res) => res.json(state.familyHistory(req.params.id)));
+
+// 還原某家族的歷史魚為當前
+app.post('/api/fish/:id/restore', (req, res) => {
+  const f = state.restoreFish(req.params.id);
+  if (!f) return res.status(404).json({ error: 'not found' });
+  broadcast({ type: 'refresh' });
+  res.json({ ok: true, fish: f });
 });
 
 app.patch('/api/config', (req, res) => {
@@ -72,20 +91,26 @@ app.post('/api/fish/preview', upload.single('photo'), async (req, res) => {
 app.post('/api/fish', upload.single('photo'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '沒有收到照片' });
-    if (!String(req.body.name || '').trim()) {
+    // 名字：有指定家族時可省略（用家族名）；無家族時仍必填
+    if (!req.body.familyId && !String(req.body.name || '').trim()) {
       return res.status(422).json({ error: '請輸入魚的名字' });
     }
     const png = await processFish(req.file.buffer, {
       strength: req.body.strength,
       removeBg: req.body.removeBg === 'true' || req.body.removeBg === true,
     });
+    const familyId = req.body.familyId ? Number(req.body.familyId) : null;
+    // 一家一魚：先記住舊的當前魚，等等從畫面移除
+    const prev = familyId
+      ? (state.listFamilies().find(f => f.id === familyId) || {}).current : null;
     const id = crypto.randomBytes(6).toString('hex');
     const file = `${id}.png`;
     fs.writeFileSync(path.join(state.FISH_DIR, file), png);
     const fish = state.addFish({
-      id, name: req.body.name, file,
+      id, name: req.body.name, file, familyId,
       headDir: Number(req.body.headDir) === -1 ? -1 : 1,
     });
+    if (prev) broadcast({ type: 'fish:remove', id: prev.id }); // 舊魚游走
     broadcast({ type: 'fish:new', fish });
     res.json({ ok: true, fish });
   } catch (e) {
@@ -150,9 +175,9 @@ app.post('/api/fish/:id/feature', (req, res) => {
   res.json({ ok: true });
 });
 
-// 畢業巡游（列隊）：全部魚列隊游過畫面謝幕
+// 畢業巡游（列隊）：全部魚列隊游過畫面謝幕。body: { text } 自由文字
 app.post('/api/parade', (req, res) => {
-  broadcast({ type: 'parade' });
+  broadcast({ type: 'parade', text: String((req.body || {}).text || '').slice(0, 40) });
   res.json({ ok: true });
 });
 
@@ -162,6 +187,12 @@ app.post('/api/gather', (req, res) => {
   const batch = ['A', 'B', 'all'].includes(b.batch) ? b.batch : 'all';
   const holdSec = Math.min(300, Math.max(4, Number(b.holdSec) || 4));
   broadcast({ type: 'gather', batch, holdSec });
+  res.json({ ok: true });
+});
+
+// 定格拍照：清字、魚停住、不自動散（等 skip 取消）
+app.post('/api/gather/freeze', (req, res) => {
+  broadcast({ type: 'gather:freeze' });
   res.json({ ok: true });
 });
 
@@ -229,6 +260,13 @@ app.delete('/api/backgrounds/:file/foreground', (req, res) => {
   res.json({ ok: true });
 });
 
+// 前景對位：位移/縮放（即時套用到投影）
+app.patch('/api/backgrounds/:file/fg-adjust', (req, res) => {
+  state.setFgAdjust(path.basename(req.params.file), req.body || {});
+  broadcast({ type: 'backgrounds', backgrounds: state.listBackgrounds() });
+  res.json({ ok: true });
+});
+
 // 手動切下一張背景
 app.post('/api/backgrounds/next', (req, res) => {
   broadcast({ type: 'bg:next' });
@@ -249,14 +287,23 @@ app.post('/api/feed', (req, res) => {
   res.json({ ok: true, foodType });
 });
 
-// 上傳頁 QR Code：優先用請求的 host（支援 tunnel/雲端網域），本機開才退回區網 IP
-app.get('/api/qr', async (req, res) => {
+// 站台基底網址（支援 tunnel/雲端，本機退回區網 IP）
+function baseUrl(req) {
   const host = req.headers.host || '';
-  const isLocal = /^(localhost|127\.0\.0\.1)/.test(host);
-  const proto = req.headers['x-forwarded-proto'] || 'http';
-  const url = isLocal
-    ? `http://${lanIP()}:${PORT}/upload/`
-    : `${proto}://${host}/upload/`;
+  if (/^(localhost|127\.0\.0\.1)/.test(host)) return `http://${lanIP()}:${PORT}`;
+  return `${req.headers['x-forwarded-proto'] || 'http'}://${host}`;
+}
+
+// 上傳頁 QR Code
+app.get('/api/qr', async (req, res) => {
+  const url = baseUrl(req) + '/upload/';
+  const dataUrl = await QRCode.toDataURL(url, { width: 480, margin: 1 });
+  res.json({ url, dataUrl });
+});
+
+// 每個家族專屬上傳 QR（?family=N）
+app.get('/api/families/:id/qr', async (req, res) => {
+  const url = `${baseUrl(req)}/upload/?family=${Number(req.params.id)}`;
   const dataUrl = await QRCode.toDataURL(url, { width: 480, margin: 1 });
   res.json({ url, dataUrl });
 });

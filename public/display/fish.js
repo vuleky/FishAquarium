@@ -308,8 +308,9 @@ class Fish {
       case 'feature': {
         this.featureT -= dt / 60;
         const k = 1 - Math.pow(0.92, dt);
-        this.root.x += (w / 2 - this.root.x) * k;
-        this.baseY += (h / 2 - this.baseY) * k;
+        // 中心可校正（投影機解析度/overscan 偏移）
+        this.root.x += (w * Fish.center.x - this.root.x) * k;
+        this.baseY += (h * Fish.center.y - this.baseY) * k;
         const target = this.baseScale * 1.8;
         this.root.scale.x += (target - this.root.scale.x) * k;
         this.root.scale.y = this.root.scale.x;
@@ -382,6 +383,7 @@ class Fish {
 }
 
 Fish.hideZones = []; // 前景遮蔽區（aquarium 依 fgDecor 設定）
+Fish.center = { x: 0.5, y: 0.5 }; // 亮相中心，可被投影校正偏移覆寫
 
 // 寶寶魚：媽媽的縮小版（輕量 Sprite，不做網格變形 → 效能無虞），跟在媽媽身旁
 class Baby {
